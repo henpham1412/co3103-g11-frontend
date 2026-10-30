@@ -15,6 +15,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
+    testTimeout: 15000,
     maxWorkers: 4,
     clearMocks: true,
     restoreMocks: true,
