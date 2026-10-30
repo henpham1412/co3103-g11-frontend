@@ -1,0 +1,35 @@
+.class-detail-page { max-width: 1200px; margin: 0 auto; padding: 32px; color: #172033; }
+.class-detail__back { display: inline-flex; gap: 8px; align-items: center; margin: 0 0 28px; color: #2563eb; }
+.class-detail__hero { border-radius: 9px; }
+.class-detail__hero-top { display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 28px; }
+.class-detail__badges, .class-detail__quick-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.class-detail__hero h2.ant-typography { margin: 22px 0 12px; }
+.class-detail__quick-facts { color: #334155; }
+.class-detail__quick-facts span { display: inline-flex; align-items: center; gap: 7px; }
+.class-detail__term { display: inline-block; margin-top: 14px; font-size: 12px; }
+.class-detail__progress-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.class-detail__progress-card { width: 100%; background: #f7f9fc; border: 0; }
+.class-detail__progress-card .ant-card-body { display: grid; gap: 10px; }
+.class-detail__progress-heading { display: flex; justify-content: space-between; }
+.class-detail__progress-heading strong:last-child { color: #2563eb; }
+.class-detail__tutor { display: flex; align-items: center; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #e5eaf2; }
+.class-detail__tutor .ant-avatar { background: #eff6ff; color: #2563eb; }
+.class-detail__tabs { margin-top: 12px; }
+.class-detail__syllabus-layout { display: grid; grid-template-columns: minmax(0, 1fr) 292px; align-items: start; gap: 24px; }
+.class-detail__section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 8px 0 16px; }
+.class-detail__section-heading h4 { margin: 0; }
+.class-detail__chapter-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.class-detail__chapter-label small { display: block; margin-top: 5px; color: #64748b; }
+.class-detail__lesson { display: flex; align-items: center; gap: 12px; min-height: 44px; border-bottom: 1px solid #edf0f5; color: #475569; }
+.class-detail__lesson:last-child { border-bottom: 0; }
+.class-detail__lesson > span:nth-child(2) { flex: 1; }
+.class-detail__lesson-check { width: 18px; color: #16a34a; }
+.class-detail__side-panels { display: grid; gap: 18px; }
+.class-detail__outcome { display: flex; align-items: flex-start; gap: 9px; color: #475569; }
+.class-detail__outcome .anticon, .class-detail__approved .anticon { color: #2563eb; }
+.class-detail__label { display: block; margin-bottom: 10px; font-size: 11px; }
+.class-detail__approved { margin: 14px 0 0; color: #15803d; font-size: 12px; }
+.class-detail__note { color: #64748b; font-size: 12px; }
+.class-detail__empty { margin-top: 48px; }
+@media (max-width: 900px) { .class-detail__syllabus-layout { grid-template-columns: 1fr; } .class-detail__side-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .class-detail-page { padding: 20px 16px; } .class-detail__hero-top { grid-template-columns: 1fr; } .class-detail__progress-wrap { align-items: stretch; } .class-detail__syllabus-layout, .class-detail__side-panels { grid-template-columns: 1fr; } .class-detail__section-heading { align-items: flex-start; flex-direction: column; } }
