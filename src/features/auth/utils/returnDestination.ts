@@ -1,4 +1,4 @@
-import { isRecord } from '@/utils/authValidation'
+import { isRecord } from '@/utils/typeGuards'
 
 export function returnDestination(from: unknown): string {
   const pathname = typeof from === 'string' ? from : isRecord(from) ? from.pathname : undefined

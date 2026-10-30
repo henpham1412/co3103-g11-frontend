@@ -17,12 +17,12 @@ function luminance(color: string) {
 describe('auth theme contrast', () => {
   const tokens = theme.getDesignToken(authTheme)
 
-  it.each(['colorText', 'colorTextSecondary', 'colorTextPlaceholder', 'colorError', 'colorSuccess', 'colorLink'] as const)(
-    '%s meets WCAG AA for normal text on the form surface', token => {
+  it("all six text tokens meet WCAG AA on the form surface", () => {
+    for (const token of ['colorText', 'colorTextSecondary', 'colorTextPlaceholder', 'colorError', 'colorSuccess', 'colorLink'] as const) {
       const values = [luminance(tokens[token]), luminance(tokens.colorBgContainer)].sort((a, b) => a - b)
-      expect((values[1] + 0.05) / (values[0] + 0.05)).toBeGreaterThanOrEqual(4.5)
-    },
-  )
+      expect((values[1] + 0.05) / (values[0] + 0.05), `case: ${JSON.stringify(token)}`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
 
   it('keeps keyboard focus indicators distinguishable from the form surface', () => {
     const values = [luminance(tokens.colorPrimaryBorder), luminance(tokens.colorBgContainer)].sort((a, b) => a - b)

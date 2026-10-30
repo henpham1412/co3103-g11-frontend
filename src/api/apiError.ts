@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { ApiErrorResponse, ApiFieldError } from '@/types/auth'
-import { isNonEmptyString, isRecord } from '@/utils/authValidation'
+import { isNonEmptyString, isRecord } from '@/utils/typeGuards'
 
 export class ApiError extends Error implements ApiErrorResponse {
   readonly status: number

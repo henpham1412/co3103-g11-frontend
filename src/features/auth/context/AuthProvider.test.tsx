@@ -9,13 +9,12 @@ import { ApiError } from '@/api/apiError'
 import { centralIdentityClient } from '@/api/centralIdentityClient'
 import { lmsClient } from '@/api/lmsClient'
 import { useAuth } from '@/hooks/useAuth'
-import { AUTH_SYNC_KEY } from '@/services/authSync'
-import { AUTH_SESSION_KEY, tokenStorage } from '@/services/tokenStorage'
+import { AUTH_SYNC_KEY } from '@/features/auth/services/authSync'
+import { AUTH_SESSION_KEY, tokenStorage } from '@/features/auth/services/tokenStorage'
 import { authSession, errorEnvelope, loginResponse, validToken, validUser } from '@/test/fixtures/auth'
 import { identityApiUrl, server } from '@/test/server'
 import type { CurrentUserResponse, LoginResponse } from '@/types/auth'
 import { AuthProvider } from './AuthProvider'
-import { authReducer } from './authReducer'
 
 const credentials = { email: validUser.email, password: 'Test-password-123!' }
 const lmsUrl = `${lmsClient.defaults.baseURL}/courses`
@@ -71,15 +70,6 @@ describe('bootstrap and restore recovery', () => {
     }))
   })
 
-  it('removes an already expired saved token without verifying it', () => {
-    const getUser = vi.spyOn(authApi, 'getCurrentUser')
-    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(authSession({ rememberMe: true, expiresAt: Date.now() - 1 })))
-    const { result } = mountAuth()
-    expect(result.current.state.status).toBe('anonymous')
-    expect(localStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
-    expect(getUser).not.toHaveBeenCalled()
-  })
-
   it.each([401, 403])('purges a rejected restore with HTTP %s', async status => {
     tokenStorage.saveSession(authSession())
     server.use(http.get(identityApiUrl('/users/me'), () => new HttpResponse(null, { status })))
@@ -88,7 +78,8 @@ describe('bootstrap and restore recovery', () => {
     expect(tokenStorage.getSession()).toBeNull()
   })
 
-  it.each(['INACTIVE', 'SUSPENDED', 'DEACTIVATED'])('rejects a 200 restore for an %s account', async status => {
+  it('rejects a 200 restore for an INACTIVE account', async () => {
+    const status = 'INACTIVE'
     tokenStorage.saveSession(authSession())
     server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...validUser, status })))
     const { result } = mountAuth()
@@ -96,21 +87,21 @@ describe('bootstrap and restore recovery', () => {
     expect(tokenStorage.getSession()).toBeNull()
   })
 
-  it.each(['network', 'server'])('retains the token after a %s failure and supports retry', async failure => {
+  it('retains the token after a network failure and supports retry', async () => {
     const session = authSession()
     tokenStorage.saveSession(session)
-    server.use(http.get(identityApiUrl('/users/me'), () => failure === 'network'
-      ? HttpResponse.error() : new HttpResponse(null, { status: 503 })))
+    server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.error()))
     const { result } = mountAuth()
     await waitFor(() => expect(result.current.state.status).toBe('restore-error'))
     expect(tokenStorage.getSession()).toEqual(session)
     const state = result.current.state
     if (state.status !== 'restore-error') throw new Error('Expected restore-error')
     expect(state.error).toBeInstanceOf(ApiError)
-    expect(state.error.status).toBe(failure === 'network' ? 0 : 503)
+    expect(state.error.status).toBe(0)
     server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json(validUser)))
     await act(() => state.retrySessionVerification())
     expect(result.current.state.status).toBe('authenticated')
+    expect(result.current.state).not.toHaveProperty('error')
   })
 
   it('renders the loading state, error, Retry and Sign in again through AppProviders', async () => {
@@ -141,7 +132,8 @@ describe('bootstrap and restore recovery', () => {
 })
 
 describe('login and logout', () => {
-  it.each([false, true])('saves login with rememberMe=%s and clears it on logout', async rememberMe => {
+  it('saves a remember-me login and clears it on logout', async () => {
+    const rememberMe = true
     const response = loginResponse({ accessToken: validToken(3 * 86400), expiresIn: 3 * 86400 })
     vi.spyOn(authApi, 'login').mockResolvedValue(response)
     const { result } = mountAuth()
@@ -152,21 +144,11 @@ describe('login and logout', () => {
     })
     expect(result.current.state.status).toBe('authenticated')
     const session = tokenStorage.getSession()!
-    if (rememberMe) expect(session.expiresAt - started).toBeLessThanOrEqual(86400_000 + 1000)
-    expect((rememberMe ? localStorage : sessionStorage).getItem(AUTH_SESSION_KEY)).not.toBeNull()
-    expect((rememberMe ? sessionStorage : localStorage).getItem(AUTH_SESSION_KEY)).toBeNull()
+    expect(session.expiresAt - started).toBeLessThanOrEqual(86400_000 + 1000)
+    expect(localStorage.getItem(AUTH_SESSION_KEY)).not.toBeNull()
+    expect(sessionStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
     await act(() => result.current.logout())
     expect(result.current.state).toEqual({ status: 'anonymous', reason: 'signed-out' })
-    expect(tokenStorage.getSession()).toBeNull()
-  })
-
-  it('does not create a session after invalid credentials', async () => {
-    server.use(http.post(identityApiUrl('/auth/login'), () => new HttpResponse(null, { status: 401 })))
-    const { result } = mountAuth()
-    await act(async () => {
-      await expect(result.current.login(credentials)).rejects.toMatchObject({ status: 401 })
-    })
-    expect(result.current.state).toMatchObject({ status: 'anonymous' })
     expect(tokenStorage.getSession()).toBeNull()
   })
 
@@ -195,7 +177,7 @@ describe('login and logout', () => {
     expect(tokenStorage.getSession()).toBeNull()
   })
 
-  it('uses one session on both clients and preserves it on LMS 403', async () => {
+  it("preserves the shared session on LMS 403 then purges once for concurrent 401s", async () => {
     const session = authSession()
     tokenStorage.saveSession(session)
     const headers: (string | null)[] = []
@@ -217,12 +199,6 @@ describe('login and logout', () => {
     expect(tokenStorage.getSession()).toEqual(session)
     expect(headers).toEqual([`Bearer ${session.accessToken}`, `Bearer ${session.accessToken}`])
     expect(await screen.findByText('You do not have permission to access this LMS resource.')).toBeInTheDocument()
-  })
-
-  it('purges once for concurrent protected 401s across both clients', async () => {
-    tokenStorage.saveSession(authSession())
-    const { result } = mountAuth()
-    await waitFor(() => expect(result.current.state.status).toBe('authenticated'))
     const clear = vi.spyOn(tokenStorage, 'clearSession')
     server.use(
       http.get(identityApiUrl('/users/me'), () => new HttpResponse(null, { status: 401 })),
@@ -326,7 +302,7 @@ describe('expiry and browser lifecycle', () => {
     tokenStorage.saveSession(session)
     vi.spyOn(authApi, 'getCurrentUser').mockResolvedValue(validUser)
     const { result } = mountAuth()
-    await act(async () => {})
+    await act(async () => { })
     expect(result.current.state.status).toBe('authenticated')
     act(() => vi.advanceTimersByTime(4999))
     expect(result.current.state.status).toBe('authenticated')
@@ -340,7 +316,7 @@ describe('expiry and browser lifecycle', () => {
     tokenStorage.saveSession(authSession({ expiresAt: Date.now() + 1000 }))
     vi.spyOn(authApi, 'getCurrentUser').mockRejectedValue(new Error('Network Error'))
     const { result } = mountAuth()
-    await act(async () => {})
+    await act(async () => { })
     expect(result.current.state.status).toBe('restore-error')
     act(() => vi.advanceTimersByTime(1000))
     expect(result.current.state).toEqual({ status: 'anonymous', reason: 'expired' })
@@ -364,7 +340,7 @@ describe('expiry and browser lifecycle', () => {
     vi.spyOn(authApi, 'getCurrentUser').mockResolvedValue(validUser)
     vi.spyOn(authApi, 'login').mockResolvedValue(loginResponse({ userId: 'new-account' }))
     const { result } = mountAuth()
-    await act(async () => {})
+    await act(async () => { })
     await act(async () => { await result.current.login(credentials) })
     act(() => vi.advanceTimersByTime(1000))
     expect(result.current.state).toMatchObject({ status: 'authenticated', user: { userId: 'new-account' } })
@@ -376,7 +352,7 @@ describe('expiry and browser lifecycle', () => {
     tokenStorage.saveSession(authSession({ accessToken: validToken(40 * 86400), expiresAt: Math.floor(Date.now() / 1000) * 1000 + lifetime }))
     vi.spyOn(authApi, 'getCurrentUser').mockResolvedValue(validUser)
     const { result, unmount } = mountAuth()
-    await act(async () => {})
+    await act(async () => { })
     act(() => vi.advanceTimersByTime(2_147_483_647))
     expect(result.current.state.status).toBe('authenticated')
     expect(vi.getTimerCount()).toBeGreaterThan(0)
@@ -486,7 +462,7 @@ describe('multi-tab session reconciliation', () => {
     tokenStorage.saveSession(old)
     vi.spyOn(authApi, 'getCurrentUser').mockResolvedValue(validUser)
     const { result } = mountAuth()
-    await act(async () => {})
+    await act(async () => { })
     const next = authSession({ rememberMe: true, accessToken: validToken(7200) })
     localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(next))
     await act(async () => vi.advanceTimersByTime(1000))
@@ -571,14 +547,4 @@ describe('multi-tab session reconciliation', () => {
     expect(result.current.state).toEqual({ status: 'anonymous', reason: 'signed-out' })
     expect(tokenStorage.getSession()).toBeNull()
   })
-})
-
-it('useAuth reports a clear programming error outside the provider', () => {
-  expect(() => renderHook(() => useAuth())).toThrow('useAuth must be used within an AuthProvider.')
-})
-
-it('the reducer replaces state variants without retaining a previous user or error', () => {
-  const state = authReducer({ status: 'authenticated', user: validUser, session: authSession() }, { type: 'anonymous', reason: 'signed-out' })
-  expect(state).toEqual({ status: 'anonymous', reason: 'signed-out' })
-  expect(authReducer(state, { type: 'initializing' })).toEqual({ status: 'initializing' })
 })

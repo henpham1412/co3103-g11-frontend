@@ -4,33 +4,17 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { normalizeApiError } from '@/api/apiError'
 import { AuthLayout } from '@/components/layout/AuthLayout'
 import { useAuth } from '@/hooks/useAuth'
-import { isRecord } from '@/utils/authValidation'
+import { isRecord } from '@/utils/typeGuards'
 import { ForgotPasswordNotice } from '../components/ForgotPasswordNotice'
 import { authRule, normalizeEmail, validateEmail, validateLoginPassword } from '../utils/authValidation'
 import { authFormErrors, type AuthField } from '../utils/authFormErrors'
+import { loginErrorMessage } from '../utils/authErrorPresentation'
 import { returnDestination } from '../utils/returnDestination'
 
 interface LoginValues {
   email: string
   password: string
   rememberMe: boolean
-}
-
-function loginErrorMessage(error: unknown): string {
-  const problem = normalizeApiError(error, '/auth/login')
-  if (problem.status === 401) return 'Invalid email or password. Please try again.'
-  if (problem.status === 423) {
-    const deadline = problem.lockedUntil ? new Date(problem.lockedUntil) : undefined
-    return deadline && Number.isFinite(deadline.getTime())
-      ? 'Your account is temporarily locked. Please try again after ' + deadline.toLocaleString() + ' (local time).'
-      : 'Your account is temporarily locked. Please try again later or contact your G11 System Administrator.'
-  }
-  if (problem.status === 0) return problem.message
-  if (problem.status >= 500) return 'The sign-in service is temporarily unavailable. Please try again later.'
-  if (problem.status === 403) return 'Unable to sign in. Please contact your G11 System Administrator.'
-  if (problem.status === 400) return 'Please check your sign-in details and try again.'
-  if (problem.status === 429) return 'Too many sign-in attempts. Please try again later.'
-  return 'Unable to sign in. Please try again later.'
 }
 
 export default function LoginPage() {

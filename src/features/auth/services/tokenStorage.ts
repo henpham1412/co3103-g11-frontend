@@ -1,5 +1,5 @@
 import type { AuthSession } from '@/types/auth'
-import { isAuthUser, isNonEmptyString, isRecord } from '@/utils/authValidation'
+import { isAuthUser, isNonEmptyString, isRecord } from '@/utils/typeGuards'
 import { calculateSessionExpiry } from '@/utils/sessionExpiry'
 
 export const AUTH_SESSION_KEY = 'co3103.auth.session'

@@ -2,23 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, Form, Input } from 'antd'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { authApi } from '@/api/authApi'
-import { normalizeApiError } from '@/api/apiError'
 import { AuthLayout } from '@/components/layout/AuthLayout'
 import type { RegisterRequest } from '@/types/auth'
-import { isRecord } from '@/utils/authValidation'
+import { isRecord } from '@/utils/typeGuards'
 import { PasswordChecklist } from '../components/PasswordChecklist'
 import {
   authRule, normalizeEmail, validateConfirmPassword, validateEmail,
   validateFullName, validateRegisterPassword,
 } from '../utils/authValidation'
-import { authFormErrors, type AuthField } from '../utils/authFormErrors'
+import type { AuthField } from '../utils/authFormErrors'
+import { registerErrorPresentation } from '../utils/authErrorPresentation'
 import { returnDestination } from '../utils/returnDestination'
 
 interface RegisterValues extends RegisterRequest {
   confirmPassword: string
 }
-
-const fieldNames = ['fullName', 'email', 'password', 'confirmPassword'] as const
 
 export default function RegisterPage() {
   const [form] = Form.useForm<RegisterValues>()
@@ -56,29 +54,9 @@ export default function RegisterPage() {
       }
     } catch (failure) {
       if (controller.signal.aborted) return
-      const problem = normalizeApiError(failure, '/auth/register')
-      if (problem.status === 0 || problem.status >= 500) {
-        setFeedback({ message: problem.status === 0 ? problem.message : 'The registration service is temporarily unavailable. Please try again later.' })
-        return
-      }
-      if (problem.status === 409) {
-        form.setFields([{ name: 'email', errors: ['An account with this email already exists.'] }])
-        setFeedback({ field: 'email' })
-        return
-      }
-      let field: AuthField | undefined
-      if (problem.status === 400) {
-        const { fields, hasUnbound } = authFormErrors(problem, fieldNames)
-        form.setFields(fields)
-        const first = fields.find(field => field.errors.length)
-        field = first?.name
-        if (first && !hasUnbound) {
-          setFeedback({ field })
-          return
-        }
-      }
-      setFeedback({ field, message: problem.status === 429 ? 'Too many registration attempts. Please try again later.'
-        : 'Unable to create your account. Please check your details and try again.' })
+      const presentation = registerErrorPresentation(failure)
+      if (presentation.fields) form.setFields(presentation.fields)
+      setFeedback({ field: presentation.field, message: presentation.message })
     } finally {
       pending.current = null
       if (!controller.signal.aborted) setSubmitting(false)

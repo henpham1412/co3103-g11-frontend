@@ -5,7 +5,7 @@ import type {
   RegisterRequest,
   RegisterResponse,
 } from '@/types/auth'
-import { isAuthUser, isNonEmptyString, isRecord } from '@/utils/authValidation'
+import { isAuthUser, isNonEmptyString, isRecord } from '@/utils/typeGuards'
 import { calculateSessionExpiry } from '@/utils/sessionExpiry'
 import { ApiError, normalizeApiError } from './apiError'
 import { centralIdentityClient } from './centralIdentityClient'

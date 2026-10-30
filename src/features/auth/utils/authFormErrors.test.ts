@@ -21,15 +21,26 @@ describe('auth form error presentation', () => {
     })
   })
 
-  it.each(['Rejected value: my-secret', 'java.sql.SQLException', '<img src=x onerror=alert(1)>', '__proto__', 'constructor'])(
-    'does not render backend diagnostics: %s', message => {
-      const result = authFormErrors(errorEnvelope({ errors: [
-        { field: 'password', message }, { field: 'invitation', message }, { message },
-      ] }), ['email', 'password'])
-      expect(result).toEqual({
+  it("replaces secret, HTML and prototype diagnostics with safe local messages", () => {
+    for (const message of ['Rejected value: my-secret', 'java.sql.SQLException', '<img src=x onerror=alert(1)>', '__proto__', 'constructor'] as const) {
+      const result = authFormErrors(errorEnvelope({
+        errors: [
+          { field: 'password', message }, { field: 'invitation', message }, { message },
+        ]
+      }), ['email', 'password'])
+      expect(result, `case: ${JSON.stringify(message)}`).toEqual({
         fields: [{ name: 'email', errors: [] }, { name: 'password', errors: ['Please check your password.'] }],
         hasUnbound: true,
       })
-    },
-  )
+    }
+  })
+})
+
+it('clears stale field errors while marking unknown and unbound errors for fallback', () => {
+  expect(authFormErrors(errorEnvelope({ errors: [{ field: 'invitation', message: 'private' }, { message: 'secret' }] }), ['email', 'password'])).toEqual({
+    fields: [{ name: 'email', errors: [] }, { name: 'password', errors: [] }], hasUnbound: true,
+  })
+  expect(authFormErrors(errorEnvelope(), ['email', 'password'])).toEqual({
+    fields: [{ name: 'email', errors: [] }, { name: 'password', errors: [] }], hasUnbound: false,
+  })
 })
