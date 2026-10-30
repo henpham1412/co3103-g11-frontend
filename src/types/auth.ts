@@ -42,6 +42,11 @@ export interface CurrentUserResponse {
 export type LoginCredentials = LoginRequest
 export type User = CurrentUserResponse
 
+export interface ApiFieldError {
+  field?: string | null
+  message: string
+}
+
 export interface ApiErrorResponse {
   status: number
   error: string
@@ -51,6 +56,7 @@ export interface ApiErrorResponse {
   code?: string
   lockedUntil?: string
   validationErrors?: Record<string, string>
+  errors?: ApiFieldError[]
 }
 
 export interface AuthSession {

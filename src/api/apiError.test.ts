@@ -11,6 +11,33 @@ function responseError(status: number, data: unknown = {}, url = '/auth/login') 
 }
 
 describe('normalizeApiError', () => {
+  it('keeps valid DOC-05 field errors when siblings are malformed or blank', () => {
+    expect(normalizeApiError(responseError(400, { validationErrors: {
+      email: 'Invalid email format', fullName: null, password: ['bad'], confirmPassword: ' ',
+    } })).validationErrors).toEqual({ email: 'Invalid email format' })
+  })
+
+  it('preserves field and unbound errors from an RFC 7807 errors array', () => {
+    const errors = [
+      { field: 'email', message: 'Email is taken' },
+      { field: 'password', message: 'Password rejected' },
+      { field: 'password', message: 'Another password error' },
+      { field: null, message: 'Registration is closed' },
+      { message: 'Contact your administrator' },
+    ]
+    expect(normalizeApiError(responseError(400, { errors }))).toMatchObject({ errors })
+  })
+
+  it('filters malformed field errors without losing valid siblings', () => {
+    const errors = [null, 'bad', {}, { field: {}, message: 'bad' }, { message: 42 }, { message: ' ' },
+      { field: 'email', message: 'Valid error', ignored: 'private' }]
+    expect(normalizeApiError(responseError(400, { errors })).errors).toEqual([{ field: 'email', message: 'Valid error' }])
+  })
+
+  it.each([null, {}, 'invalid'])('ignores a non-array errors member: %j', errors => {
+    expect(normalizeApiError(responseError(400, { errors })).errors).toBeUndefined()
+  })
+
   it('maps RFC 7807 title/detail/instance while trusting the HTTP status', () => {
     const result = normalizeApiError(responseError(423, {
       status: 200, title: 'Account locked', detail: 'Try again in 15 minutes.',

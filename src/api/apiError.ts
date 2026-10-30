@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { ApiErrorResponse } from '@/types/auth'
+import type { ApiErrorResponse, ApiFieldError } from '@/types/auth'
 import { isNonEmptyString, isRecord } from '@/utils/authValidation'
 
 export class ApiError extends Error implements ApiErrorResponse {
@@ -10,6 +10,7 @@ export class ApiError extends Error implements ApiErrorResponse {
   readonly path: string
   readonly lockedUntil?: string
   readonly validationErrors?: Record<string, string>
+  readonly errors?: ApiFieldError[]
 
   constructor(details: ApiErrorResponse) {
     super(details.message)
@@ -21,6 +22,7 @@ export class ApiError extends Error implements ApiErrorResponse {
     this.path = details.path
     this.lockedUntil = details.lockedUntil
     this.validationErrors = details.validationErrors
+    this.errors = details.errors
   }
 }
 
@@ -48,9 +50,10 @@ export function normalizeApiError(error: unknown, endpoint?: string): ApiError {
     const invalidCredentials = status === 401 && pathname.endsWith('/auth/login')
     const [fallbackError, fallbackMessage] = fallbackErrors[status]
       ?? ['Request Failed', 'The request failed. Please try again later.']
-    const validationErrors = isRecord(data.validationErrors)
-      && Object.values(data.validationErrors).every(value => typeof value === 'string')
-      ? data.validationErrors as Record<string, string> : undefined
+    const validationEntries = isRecord(data.validationErrors)
+      ? Object.entries(data.validationErrors).filter((entry): entry is [string, string] => isNonEmptyString(entry[1]))
+      : []
+    const validationErrors = validationEntries.length ? Object.fromEntries(validationEntries) : undefined
 
     return new ApiError({
       status,
@@ -63,6 +66,10 @@ export function normalizeApiError(error: unknown, endpoint?: string): ApiError {
       path: isNonEmptyString(data.path) ? data.path : isNonEmptyString(data.instance) ? data.instance : path,
       lockedUntil: isNonEmptyString(data.lockedUntil) ? data.lockedUntil : undefined,
       validationErrors,
+      errors: Array.isArray(data.errors) ? data.errors.filter((entry): entry is ApiFieldError =>
+        isRecord(entry) && isNonEmptyString(entry.message)
+        && (entry.field === undefined || entry.field === null || typeof entry.field === 'string'),
+      ).map(({ field, message }) => ({ field, message })) : undefined,
     })
   }
 

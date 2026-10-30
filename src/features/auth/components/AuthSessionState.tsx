@@ -18,7 +18,7 @@ export function AuthSessionState({ children }: PropsWithChildren) {
           type="error"
           showIcon
           title="Unable to verify your session"
-          description={state.error.message}
+          description="The authentication service is temporarily unavailable. Please retry or sign in again."
           action={(
             <Space wrap>
               <Button type="primary" onClick={() => { void state.retrySessionVerification() }}>Retry</Button>

@@ -129,13 +129,58 @@ to prevent forwarding passwords or Bearer headers beyond the configured API.
 The error normalizer also accepts RFC 7807 `title`, `detail`, and `instance`, with
 DOC-05 fields taking precedence and the HTTP response providing the status.
 
+## Authentication Pages
+
+`/login` (AUTH-01) and `/register` (AUTH-02) use the shared responsive auth
+layout, Ant Design 6.6.6, and the Figma tokens in `src/app/theme.ts`. Inter
+Variable and IBM Plex Mono are bundled locally. The layout supports viewports
+from 320px; the cards are capped at 440px and 460px respectively.
+
+Login uses `useAuth` for session persistence. It accepts navigation state
+`{ from, email, message, messageType }`, where `from` is a local path or router
+location and `messageType` is `success` or `info`. Registration replaces its
+history entry with `/login`, passing the normalized email, a success message,
+and the validated local return destination. The destination survives navigation
+between the auth pages. External URLs, encoded separators/controls and return
+paths to the auth pages fall back to `/`. Password recovery opens administrator
+guidance in a modal.
+
+Form validators live in `src/features/auth/utils/authValidation.ts`. Identity
+fields are trimmed and email is lowercased on submission. Passwords are never
+trimmed or normalized: registration requires JavaScript length >= 8 and both
+forms require nonblank passwords and enforce <= 72 UTF-8 bytes. Login intentionally
+accepts shorter passwords. The password checklist mirrors these rules; full names
+reject all Unicode control characters. Both forms map HTTP 400 DOC-05
+`validationErrors` and RFC 7807 `errors: [{ field, message }]` into the form and
+focus the first invalid field. Known validation messages use local translations;
+unknown field diagnostics and unbound errors use safe local fallback copy.
+Registration conflicts bind to email. HTTP 401 login failures always use generic
+credential copy, even if the body supplies account lock metadata. Only HTTP 423
+shows a lock deadline. Raw backend messages are not displayed by either form.
+API failures focus the first invalid field or the error banner, including repeated
+identical failures. Error/placeholder text and keyboard focus colors meet WCAG AA
+contrast thresholds. Input and checkbox borders use a darker component token;
+decorative card borders retain the layout token. Password visibility controls have
+a 24px target and a visible keyboard focus indicator.
+
 ## Testing
 
 Vitest uses jsdom and the `@/` alias for `src/`. The setup in `src/test/setup.ts`
 loads jest-dom matchers, cleans up React renders, and starts/resets/stops the MSW
-server. Unhandled requests fail tests. Default handlers and synthetic auth
+server. Unhandled requests fail tests even when application code catches the
+network failure (the setup self-test explicitly accounts for its deliberate
+unmatched request). Default handlers and synthetic auth
 fixtures live in `src/test/server.ts` and `src/test/fixtures/auth.ts`; override
 handlers in individual tests with `server.use(...)`. No live backend is required.
+
+For production browser verification, build and serve the app on port 4179, then run
+`node scripts/verify-auth-ui.cjs http://127.0.0.1:4179`. This optional review probe
+requires Playwright with Chromium and axe-core. Set `AUTH_REVIEW_PLAYWRIGHT` to an
+existing Playwright package directory and `AUTH_REVIEW_AXE` to `axe.min.js` when
+using external tool installations. It mocks API responses and checks 320–1440px
+layouts, WCAG A/AA rules, error focus/retries, password controls, UTF-8 boundaries,
+registration/sign-in, and unsafe return destinations. The main Vitest suite does
+not require these browser tools.
 
 Before handing off a change, run `npm run test`, `npm run lint`, and
 `npm run build`. Tests cover API payloads, response validation, DOC-05 errors,

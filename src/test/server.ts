@@ -13,3 +13,10 @@ export const handlers = [
 ]
 
 export const server = setupServer(...handlers)
+
+// A rejected request can be caught by application code. Record it separately
+// so an accidental missing handler still fails the test in afterEach.
+export const unhandledRequests: string[] = []
+server.events.on('request:unhandled', ({ request }) => {
+  unhandledRequests.push(`${request.method} ${new URL(request.url).pathname}`)
+})
