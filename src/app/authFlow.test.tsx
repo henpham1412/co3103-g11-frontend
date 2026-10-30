@@ -4,13 +4,44 @@ import { ConfigProvider } from 'antd'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { expect, it, vi } from 'vitest'
 import { AuthContext } from '@/features/auth/context/AuthContext'
+import { authApi } from '@/api/authApi'
 import { tokenStorage } from '@/features/auth/services/tokenStorage'
 import AuthTestMotion from '@/test/AuthTestMotion'
-import { authSession, createToken, validUser } from '@/test/fixtures/auth'
-import { fillAuthFields } from '@/test/renderAuthPage'
+import { authSession, createToken, loginResponse, validUser } from '@/test/fixtures/auth'
+import { deferred, fillAuthFields } from '@/test/renderAuthPage'
+import type { LoginResponse } from '@/types/auth'
 import App from './App'
 import AppProviders from './providers'
 import { router as appRouter } from './router'
+
+it('cancels a pending login when leaving its page with the real provider and guards', async () => {
+  localStorage.clear()
+  sessionStorage.clear()
+  const pending = deferred<LoginResponse>()
+  const login = vi.spyOn(authApi, 'login').mockReturnValue(pending.promise)
+  const user = userEvent.setup()
+  const router = createMemoryRouter(appRouter.routes, { initialEntries: ['/login'] })
+  const view = render(
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <AppProviders><AuthTestMotion><RouterProvider router={router} /></AuthTestMotion></AppProviders>
+    </ConfigProvider>,
+  )
+  try {
+    await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
+    await fillAuthFields(user, { Email: validUser.email, Password: 'password' })
+    await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
+    await user.click(screen.getByRole('link', { name: 'Create account' }))
+    await screen.findByRole('heading', { name: 'Create Central Account' })
+    await act(async () => { pending.resolve(loginResponse()) })
+    expect(router.state.location.pathname).toBe('/register')
+    expect(tokenStorage.getSession()).toBeNull()
+    expect(login.mock.calls[0][1]?.aborted).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Sign Out' })).not.toBeInTheDocument()
+  } finally {
+    view.unmount()
+    router.dispose()
+  }
+})
 
 it.each(['lazy import', 'render'])('recovers from a route %s failure without showing internal details', async failure => {
   const problem = new Error('Private diagnostic details')

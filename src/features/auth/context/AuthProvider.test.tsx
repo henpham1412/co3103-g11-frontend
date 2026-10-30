@@ -213,6 +213,51 @@ describe('login and logout', () => {
 })
 
 describe('cancellation and generation races', () => {
+  it('does not start a login whose caller has already canceled', async () => {
+    const login = vi.spyOn(authApi, 'login')
+    const cancellation = new AbortController()
+    cancellation.abort()
+    const { result } = mountAuth()
+    await act(async () => {
+      await expect(result.current.login(credentials, false, cancellation.signal))
+        .rejects.toMatchObject({ error: 'Request Aborted' })
+    })
+    expect(login).not.toHaveBeenCalled()
+    expect(tokenStorage.getSession()).toBeNull()
+  })
+
+  it('ignores an older caller cancellation after a newer login starts', async () => {
+    const first = deferred<LoginResponse>()
+    const second = deferred<LoginResponse>()
+    const login = vi.spyOn(authApi, 'login').mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+    const cancellation = new AbortController()
+    const { result } = mountAuth()
+    let older!: Promise<unknown>
+    let newer!: Promise<unknown>
+    act(() => { older = result.current.login(credentials, false, cancellation.signal) })
+    const assertion = expect(older).rejects.toMatchObject({ error: 'Request Aborted' })
+    act(() => { newer = result.current.login(credentials) })
+    act(() => cancellation.abort())
+    expect(login.mock.calls[1][1]?.aborted).toBe(false)
+    await act(async () => { second.resolve(loginResponse({ userId: 'new-account' })); await newer })
+    await act(async () => { first.resolve(loginResponse()); await assertion })
+    expect(result.current.state).toMatchObject({ status: 'authenticated', user: { userId: 'new-account' } })
+    expect(tokenStorage.getSession()?.userId).toBe('new-account')
+  })
+
+  it('keeps session expiry active when a completed login caller is canceled', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(authApi, 'login').mockResolvedValue(loginResponse({ accessToken: validToken(5), expiresIn: 5 }))
+    const cancellation = new AbortController()
+    const { result } = mountAuth()
+    await act(async () => { await result.current.login(credentials, false, cancellation.signal) })
+    act(() => cancellation.abort())
+    expect(result.current.state.status).toBe('authenticated')
+    act(() => vi.advanceTimersByTime(5000))
+    expect(result.current.state).toEqual({ status: 'anonymous', reason: 'expired' })
+    expect(tokenStorage.getSession()).toBeNull()
+  })
+
   it('does not restore a late hydration result after logout, even if transport ignores abort', async () => {
     tokenStorage.saveSession(authSession())
     const pending = deferred<CurrentUserResponse>()
@@ -410,6 +455,26 @@ describe('expiry and browser lifecycle', () => {
 })
 
 describe('multi-tab session reconciliation', () => {
+  it.each([false, true])('honors explicit sign-out before a shared login event (rememberMe=%s)', async rememberMe => {
+    tokenStorage.saveSession(authSession({ rememberMe }))
+    const verify = vi.spyOn(authApi, 'getCurrentUser').mockResolvedValue(validUser)
+    const { result } = mountAuth()
+    await waitFor(() => expect(result.current.state.status).toBe('authenticated'))
+    const next = authSession({ rememberMe: true, accessToken: validToken(7200) })
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(next))
+
+    await act(() => result.current.logout())
+    expect(result.current.state).toEqual({ status: 'anonymous', reason: 'signed-out' })
+    expect(tokenStorage.getSession()).toBeNull()
+    expect(JSON.parse(localStorage.getItem(AUTH_SYNC_KEY)!)).toMatchObject({
+      type: 'logout', reason: 'signed-out', sessionId: next.sessionId,
+    })
+    expect(verify).toHaveBeenCalledOnce()
+    signal(AUTH_SESSION_KEY, JSON.stringify(next))
+    act(() => window.dispatchEvent(new Event('focus')))
+    expect(result.current.state.status).toBe('anonymous')
+  })
+
   it('ignores a delayed logout from an older session after a new login', async () => {
     const old = authSession({ rememberMe: true })
     tokenStorage.saveSession(old)
@@ -507,13 +572,17 @@ describe('multi-tab session reconciliation', () => {
     expect(write).not.toHaveBeenCalled()
   })
 
-  it('does not resurrect a logged-out session if browser storage removal fails', async () => {
+  it.each([false, true])('does not resurrect a failed logout deletion (blocked reads=%s)', async blockReads => {
     tokenStorage.saveSession(authSession())
     vi.spyOn(authApi, 'getCurrentUser').mockResolvedValue(validUser)
     const { result } = mountAuth()
     await waitFor(() => expect(result.current.state.status).toBe('authenticated'))
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new DOMException('Blocked') })
+    const read = blockReads
+      ? vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('Blocked') })
+      : undefined
     await act(() => result.current.logout())
+    read?.mockRestore()
     await act(() => result.current.retrySessionVerification())
     expect(result.current.state.status).toBe('anonymous')
     expect(tokenStorage.getSession()).toBeNull()

@@ -142,8 +142,10 @@ location and `messageType` is `success` or `info`. Registration replaces its
 history entry with `/login`, passing the normalized email, a success message,
 and the validated local return destination. The destination survives navigation
 between the auth pages. External URLs, encoded separators/controls and return
-paths to the auth pages fall back to `/`. Password recovery opens administrator
-guidance in a modal.
+paths to the auth pages fall back to `/`. Leaving the login page cancels its
+pending authentication operation, preventing late responses from saving a session
+or redirecting through the public-route guard. Password recovery opens
+administrator guidance in a modal.
 
 Form validators live in `src/features/auth/utils/authValidation.ts`. Identity
 fields are trimmed and email is lowercased on submission. Passwords are never
@@ -173,14 +175,11 @@ unmatched request). Default handlers and synthetic auth
 fixtures live in `src/test/server.ts` and `src/test/fixtures/auth.ts`; override
 handlers in individual tests with `server.use(...)`. No live backend is required.
 
-For production browser verification, build and serve the app on port 4179, then run
-`node scripts/verify-auth-ui.cjs http://127.0.0.1:4179`. This optional review probe
-requires Playwright with Chromium and axe-core. Set `AUTH_REVIEW_PLAYWRIGHT` to an
-existing Playwright package directory and `AUTH_REVIEW_AXE` to `axe.min.js` when
-using external tool installations. It mocks API responses and checks 320–1440px
-layouts, WCAG A/AA rules, error focus/retries, password controls, UTF-8 boundaries,
-registration/sign-in, and unsafe return destinations. The main Vitest suite does
-not require these browser tools.
+For production browser verification, run `npm run build`, then
+`npm run preview -- --host 127.0.0.1 --port 4179`. With the configured backend
+services available, open the printed URL and check registration, sign-in,
+protected-route redirects, session restoration, and sign-out across tabs.
+The Vitest suite mocks API responses and does not require a live backend.
 
 Before handing off a change, run `npm run test`, `npm run lint`, and
 `npm run build`. Tests cover API payloads, response validation, DOC-05 errors,

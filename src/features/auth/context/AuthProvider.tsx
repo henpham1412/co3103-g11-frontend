@@ -33,20 +33,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const isCurrent = useCallback((generation: number) =>
     mounted.current && snapshot.current.generation === generation, [])
 
-  const purgeSession = useCallback((reason: LogoutReason, broadcast = true) => {
+  const purgeSession = useCallback((reason: LogoutReason, broadcast = true, explicit = false) => {
     if (!mounted.current) return
     const previous = snapshot.current.session
     const stored = tokenStorage.getSession()
     // Storage events may still be queued when an old timer/401 fires.
-    if (stored && stored.sessionId !== previous?.sessionId) {
+    if (!explicit && stored && stored.sessionId !== previous?.sessionId) {
       void verify.current?.()
       return
     }
     beginOperation()
     snapshot.current.session = null
+    // A user sign-out also clears a shared login whose storage event is queued.
     tokenStorage.clearSession(previous?.sessionId)
+    if (explicit && stored && stored.sessionId !== previous?.sessionId) {
+      tokenStorage.clearSession(stored.sessionId)
+    }
     dispatch({ type: 'anonymous', reason })
-    if (broadcast) sync.current?.publish({ type: 'logout', reason, sessionId: previous?.sessionId ?? null })
+    if (broadcast) {
+      sync.current?.publish({ type: 'logout', reason, sessionId: previous?.sessionId ?? null })
+      if (explicit && stored && stored.sessionId !== previous?.sessionId) {
+        sync.current?.publish({ type: 'logout', reason, sessionId: stored.sessionId })
+      }
+    }
   }, [beginOperation])
 
   const scheduleExpiry = useCallback((session: AuthSession, generation: number) => {
@@ -100,14 +109,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [beginOperation, isCurrent, purgeSession, scheduleExpiry])
 
-  const login = useCallback(async (credentials: LoginCredentials, rememberMe = false): Promise<AuthSession> => {
-    if (!mounted.current) throw normalizeApiError(new CanceledError())
+  const login = useCallback(async (credentials: LoginCredentials, rememberMe = false, signal?: AbortSignal): Promise<AuthSession> => {
+    if (!mounted.current || signal?.aborted) throw normalizeApiError(new CanceledError())
     const generation = beginOperation()
     snapshot.current.session = null
     tokenStorage.clearSession()
     dispatch({ type: 'anonymous' })
     const pending = new AbortController()
     controller.current = pending
+    const cancel = () => {
+      // Leaving the submitting page invalidates even transports that ignore abort.
+      // An older caller must never cancel a newer authentication operation.
+      if (isCurrent(generation)) beginOperation()
+    }
+    signal?.addEventListener('abort', cancel, { once: true })
     try {
       const result = await authApi.login(credentials, pending.signal)
       if (!isCurrent(generation)) throw new CanceledError('A newer authentication operation replaced this login.')
@@ -134,11 +149,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return session
     } catch (error) {
       throw normalizeApiError(error, '/auth/login')
+    } finally {
+      signal?.removeEventListener('abort', cancel)
     }
   }, [beginOperation, isCurrent, scheduleExpiry])
 
   const logout = useCallback(async (reason: LogoutReason = 'signed-out') => {
-    purgeSession(reason)
+    purgeSession(reason, true, true)
   }, [purgeSession])
 
   useLayoutEffect(() => {

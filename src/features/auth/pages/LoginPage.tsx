@@ -28,11 +28,14 @@ export default function LoginPage() {
   const [forgotOpen, setForgotOpen] = useState(false)
   const errorRef = useRef<HTMLDivElement>(null)
   const active = useRef(false)
-  const pending = useRef(false)
+  const pending = useRef<AbortController | null>(null)
 
   useEffect(() => {
     active.current = true
-    return () => { active.current = false }
+    return () => {
+      active.current = false
+      pending.current?.abort()
+    }
   }, [])
 
   useEffect(() => {
@@ -48,14 +51,15 @@ export default function LoginPage() {
 
   async function submit(values: LoginValues) {
     if (pending.current) return
-    pending.current = true
+    const controller = new AbortController()
+    pending.current = controller
     setSubmitting(true)
     setFeedback(undefined)
     try {
-      await login({ email: normalizeEmail(values.email), password: values.password }, values.rememberMe)
+      await login({ email: normalizeEmail(values.email), password: values.password }, values.rememberMe, controller.signal)
       if (active.current) void navigate(returnDestination(navigationState.from), { replace: true })
     } catch (failure) {
-      if (!active.current) return
+      if (!active.current || controller.signal.aborted) return
       const problem = normalizeApiError(failure, '/auth/login')
       let field: AuthField | undefined
       if (problem.status === 400) {
@@ -70,7 +74,7 @@ export default function LoginPage() {
       }
       setFeedback({ field, message: loginErrorMessage(problem) })
     } finally {
-      pending.current = false
+      pending.current = null
       if (active.current) setSubmitting(false)
     }
   }

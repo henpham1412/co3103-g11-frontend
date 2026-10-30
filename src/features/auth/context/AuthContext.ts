@@ -12,7 +12,7 @@ export type AuthState =
 
 export interface AuthContextValue {
   state: AuthState
-  login(credentials: LoginCredentials, rememberMe?: boolean): Promise<AuthSession>
+  login(credentials: LoginCredentials, rememberMe?: boolean, signal?: AbortSignal): Promise<AuthSession>
   logout(reason?: LogoutReason): Promise<void>
   retrySessionVerification(): Promise<void>
 }
