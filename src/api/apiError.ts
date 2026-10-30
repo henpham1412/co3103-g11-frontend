@@ -54,13 +54,13 @@ export function normalizeApiError(error: unknown, endpoint?: string): ApiError {
 
     return new ApiError({
       status,
-      error: isNonEmptyString(data.error) ? data.error : fallbackError,
+      error: isNonEmptyString(data.error) ? data.error : isNonEmptyString(data.title) ? data.title : fallbackError,
       message: isNonEmptyString(data.message) ? data.message
-        : invalidCredentials ? 'Invalid email or password'
+        : isNonEmptyString(data.detail) ? data.detail : invalidCredentials ? 'Invalid email or password'
           : duplicateEmail ? 'An account with this email already exists.' : fallbackMessage,
       code: isNonEmptyString(data.code) ? data.code : duplicateEmail ? 'DUPLICATE_EMAIL' : undefined,
       timestamp: isNonEmptyString(data.timestamp) ? data.timestamp : timestamp,
-      path: isNonEmptyString(data.path) ? data.path : path,
+      path: isNonEmptyString(data.path) ? data.path : isNonEmptyString(data.instance) ? data.instance : path,
       lockedUntil: isNonEmptyString(data.lockedUntil) ? data.lockedUntil : undefined,
       validationErrors,
     })

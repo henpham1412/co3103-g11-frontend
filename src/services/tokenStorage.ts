@@ -3,12 +3,16 @@ import { isAuthUser, isNonEmptyString, isRecord } from '@/utils/authValidation'
 import { calculateSessionExpiry } from '@/utils/sessionExpiry'
 
 export const AUTH_SESSION_KEY = 'co3103.auth.session'
-export const AUTH_SESSION_VERSION = 1
+export const AUTH_SESSION_VERSION = 2
 
 type StorageName = 'localStorage' | 'sessionStorage'
+// A failed browser deletion must not resurrect the rejected session in this runtime.
+// Keep only non-secret IDs; a fresh login always gets a different ID.
+const failedPurges = new Set<string>()
 
 function validatedSession(value: unknown): AuthSession | null {
   if (!isRecord(value) || !isAuthUser(value) || value.status !== 'ACTIVE'
+    || !isNonEmptyString(value.sessionId) || failedPurges.has(value.sessionId)
     || !isNonEmptyString(value.accessToken) || value.tokenType !== 'Bearer'
     || typeof value.expiresAt !== 'number' || !Number.isFinite(value.expiresAt)
     || typeof value.rememberMe !== 'boolean' || value.version !== AUTH_SESSION_VERSION) return null
@@ -20,25 +24,38 @@ function validatedSession(value: unknown): AuthSession | null {
   ))
   if (expiresAt <= now) return null
   return {
+    sessionId: value.sessionId,
     accessToken: value.accessToken, tokenType: value.tokenType,
     userId: value.userId, email: value.email, fullName: value.fullName, status: value.status,
     expiresAt, rememberMe: value.rememberMe, version: AUTH_SESSION_VERSION,
   }
 }
 
-function removeSession(storage: StorageName): boolean {
+function removeSession(storage: StorageName, sessionId?: string): boolean {
+  let removedId = sessionId
   try {
+    const raw = window[storage].getItem(AUTH_SESSION_KEY)
+    if (raw !== null) {
+      try {
+        const stored: unknown = JSON.parse(raw)
+        if (isRecord(stored) && isNonEmptyString(stored.sessionId)) {
+          if (sessionId !== undefined && stored.sessionId !== sessionId) return true
+          removedId = stored.sessionId
+        }
+      } catch { /* Corrupt records cannot represent a newer valid session. */ }
+    }
     window[storage].removeItem(AUTH_SESSION_KEY)
     return true
   } catch {
+    if (removedId !== undefined) failedPurges.add(removedId)
     return false
   }
 }
 
-export function clearSession(): boolean {
+export function clearSession(sessionId?: string): boolean {
   // Attempt both removals even if one storage is unavailable.
-  const localCleared = removeSession('localStorage')
-  const sessionCleared = removeSession('sessionStorage')
+  const localCleared = removeSession('localStorage', sessionId)
+  const sessionCleared = removeSession('sessionStorage', sessionId)
   return localCleared && sessionCleared
 }
 
@@ -74,9 +91,9 @@ function readSession(storage: StorageName): AuthSession | null {
 export function getSession(): AuthSession | null {
   const session = readSession('sessionStorage')
   const persistent = readSession('localStorage')
-  // Prefer this tab's explicit session if stale data exists in both stores.
-  if (session && persistent && !removeSession('localStorage')) return null
-  return session ?? persistent
+  // A sleeping/reopened tab must not delete a newer shared login.
+  if (session && persistent && !removeSession('sessionStorage', session.sessionId)) return null
+  return persistent ?? session
 }
 
 export const tokenStorage = { saveSession, getSession, clearSession }

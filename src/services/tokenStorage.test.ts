@@ -13,7 +13,7 @@ beforeEach(() => {
 })
 
 describe('tokenStorage', () => {
-  it.each([false, true])('saves and reads a version-1 session with rememberMe=%s', rememberMe => {
+  it.each([false, true])('saves and reads a version-2 session with rememberMe=%s', rememberMe => {
     const session = authSession({ rememberMe })
     expect(saveSession(session)).toBe(true)
     expect(getSession()).toEqual(session)
@@ -40,12 +40,23 @@ describe('tokenStorage', () => {
     expect(sessionStorage.getItem('draft')).toBe('notes')
   })
 
-  it('prefers the current tab and removes a conflicting persistent session', () => {
+  it('prefers a shared login over an old private session left in a reopened tab', () => {
     const session = authSession()
-    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(authSession({ rememberMe: true, userId: 'older-user' })))
+    const persistent = authSession({ rememberMe: true, userId: 'newer-user' })
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(persistent))
     sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
-    expect(getSession()).toEqual(session)
-    expect(localStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
+    expect(getSession()).toEqual(persistent)
+    expect(sessionStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
+  })
+
+  it('scopes removal to the rejected session without deleting a newer shared login', () => {
+    const old = authSession()
+    const next = authSession({ rememberMe: true })
+    sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(old))
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(next))
+    expect(clearSession(old.sessionId)).toBe(true)
+    expect(sessionStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
+    expect(getSession()).toEqual(next)
   })
 
   it.each(['localStorage', 'sessionStorage'] as const)('cleans up corrupted JSON in %s', storage => {
@@ -123,7 +134,8 @@ describe('tokenStorage', () => {
   })
 
   it.each([
-    null, [], {}, { ...authSession(), version: 2 }, { ...authSession(), version: '1' },
+    null, [], {}, { ...authSession(), version: 1 }, { ...authSession(), version: '2' },
+    { ...authSession(), sessionId: undefined }, { ...authSession(), sessionId: '' },
     { ...authSession(), accessToken: 'broken' }, { ...authSession(), tokenType: 'Basic' },
     { ...authSession(), expiresAt: 'tomorrow' }, { ...authSession(), expiresAt: null },
     { ...authSession(), rememberMe: 'true' }, { ...authSession(), userId: '' },

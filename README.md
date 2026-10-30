@@ -104,16 +104,30 @@ without `exp` requires `expiresIn`; malformed claims or tokens expire immediatel
 JWT decoding only determines the client deadline. Signature verification and
 authorization remain backend responsibilities.
 
-`tokenStorage.saveSession(session)` stores version `1` under
+`tokenStorage.saveSession(session)` stores version `2` under
 `co3103.auth.session`: `localStorage` for remember-me, `sessionStorage` otherwise.
 Saving removes older records in both stores and returns `false` if validation,
 cleanup, or writing fails. Only declared session fields are persisted.
 `getSession()` removes corrupt/expired records and returns `null` when no valid
 session exists. Reads never extend the saved absolute deadline. If both stores
-contain valid records, the tab session wins and the persistent record is removed.
+contain valid records, the persistent session wins and the stale tab record is removed.
 `clearSession()` attempts both stores and returns whether both removals succeeded.
-Storage exceptions are caught. Browser storage is accessible to JavaScript;
+Passing a session ID scopes deletion to that session so an old tab cannot delete
+a newer login. Failed removals quarantine that ID in memory for the current page
+lifetime. Storage exceptions are caught. Browser storage is accessible to JavaScript;
 these helpers provide expiry and lifecycle handling, not protection against XSS.
+
+Session schema version 2 adds a random, non-secret `sessionId` for scoped logout
+signals. Version 1 records are discarded and require signing in again. Cross-tab
+signals contain IDs and lifecycle metadata only, never tokens or profile data.
+The provider reconciles browser storage on focus/visibility recovery and protects
+newer sessions from delayed timers, requests and logout messages. Anonymous 401s
+cannot cancel a pending login. LMS 403s notify without purging the session.
+
+Both HTTP clients reject redirects, including on public login/registration calls,
+to prevent forwarding passwords or Bearer headers beyond the configured API.
+The error normalizer also accepts RFC 7807 `title`, `detail`, and `instance`, with
+DOC-05 fields taking precedence and the HTTP response providing the status.
 
 ## Testing
 

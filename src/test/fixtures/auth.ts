@@ -39,12 +39,13 @@ export function loginResponse(overrides: Partial<LoginResponse> = {}): LoginResp
 
 export function authSession(overrides: Partial<AuthSession> = {}): AuthSession {
   return {
+    sessionId: crypto.randomUUID(),
     ...validUser,
     accessToken: validToken(),
     tokenType: 'Bearer',
     expiresAt: Math.floor(Date.now() / 1000) * 1000 + 3600_000,
     rememberMe: false,
-    version: 1,
+    version: 2,
     ...overrides,
   }
 }

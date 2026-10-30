@@ -38,7 +38,7 @@ export async function register(payload: RegisterRequest, signal?: AbortSignal): 
   const endpoint = '/auth/register'
   try {
     const { email, password, fullName } = payload
-    const { data } = await centralIdentityClient.post<unknown>(endpoint, { email, password, fullName }, { signal })
+    const { data } = await centralIdentityClient.post<unknown>(endpoint, { email, password, fullName }, { signal, skipAuth: true })
     if (!isRecord(data) || !isAuthUser(data) || !isNonEmptyString(data.createdAt)
       || !Number.isFinite(Date.parse(data.createdAt))) throw invalidResponse(endpoint)
     return {
@@ -54,7 +54,7 @@ export async function login(payload: LoginRequest, signal?: AbortSignal): Promis
   const endpoint = '/auth/login'
   try {
     const { email, password } = payload
-    const { data } = await centralIdentityClient.post<unknown>(endpoint, { email, password }, { signal })
+    const { data } = await centralIdentityClient.post<unknown>(endpoint, { email, password }, { signal, skipAuth: true })
     if (!isRecord(data) || !isAuthUser(data) || !isNonEmptyString(data.accessToken)
       || data.tokenType !== 'Bearer' || typeof data.expiresIn !== 'number'
       || !Number.isFinite(data.expiresIn) || data.expiresIn <= 0
@@ -76,7 +76,7 @@ export async function getCurrentUser(token?: string, signal?: AbortSignal): Prom
   try {
     const { data } = await centralIdentityClient.get<unknown>(endpoint, {
       signal,
-      ...(token === undefined ? {} : { headers: { Authorization: `Bearer ${token}` } }),
+      ...(token === undefined ? {} : { authToken: token, headers: { Authorization: `Bearer ${token}` } }),
     })
     if (!isAuthUser(data)) throw invalidResponse(endpoint)
     requireActiveUser(data, endpoint)

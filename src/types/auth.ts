@@ -39,6 +39,9 @@ export interface CurrentUserResponse {
   role?: string
 }
 
+export type LoginCredentials = LoginRequest
+export type User = CurrentUserResponse
+
 export interface ApiErrorResponse {
   status: number
   error: string
@@ -51,6 +54,8 @@ export interface ApiErrorResponse {
 }
 
 export interface AuthSession {
+  // Random public identifier for lifecycle messages; never derived from the token.
+  sessionId: string
   accessToken: string
   tokenType: string
   userId: string

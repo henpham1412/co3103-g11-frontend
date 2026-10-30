@@ -11,6 +11,25 @@ function responseError(status: number, data: unknown = {}, url = '/auth/login') 
 }
 
 describe('normalizeApiError', () => {
+  it('maps RFC 7807 title/detail/instance while trusting the HTTP status', () => {
+    const result = normalizeApiError(responseError(423, {
+      status: 200, title: 'Account locked', detail: 'Try again in 15 minutes.',
+      instance: '/api/v1/auth/login', code: 'ACCOUNT_LOCKED',
+      lockedUntil: '2026-10-30T13:00:00Z',
+    }))
+    expect(result).toMatchObject({
+      status: 423, error: 'Account locked', message: 'Try again in 15 minutes.',
+      path: '/api/v1/auth/login', code: 'ACCOUNT_LOCKED', lockedUntil: '2026-10-30T13:00:00Z',
+    })
+  })
+
+  it('prefers DOC-05 fields when both error formats are present', () => {
+    expect(normalizeApiError(responseError(400, {
+      error: 'Bad Request', message: 'Invalid email', path: '/auth/register',
+      title: 'Other title', detail: 'Other detail', instance: '/other',
+    }))).toMatchObject({ error: 'Bad Request', message: 'Invalid email', path: '/auth/register' })
+  })
+
   it('preserves every DOC-05 field and the Error interface', () => {
     const envelope = errorEnvelope({ code: 'VALIDATION_ERROR', validationErrors: { email: 'Invalid email' } })
     const result = normalizeApiError(responseError(400, envelope), '/auth/register')

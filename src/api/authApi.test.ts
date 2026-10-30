@@ -110,6 +110,22 @@ describe('getCurrentUser', () => {
 })
 
 describe('authentication failures', () => {
+  it('does not forward login credentials through a redirect', async () => {
+    let leaked = false
+    server.use(
+      http.post(identityApiUrl('/auth/login'), () => new HttpResponse(null, {
+        status: 307, headers: { Location: 'https://outside.example/collect' },
+      })),
+      http.post('https://outside.example/collect', () => {
+        leaked = true
+        return HttpResponse.json(loginResponse())
+      }),
+    )
+    const result = await Promise.allSettled([login(credentials)])
+    expect(leaked).toBe(false)
+    expect(result[0].status).toBe('rejected')
+  })
+
   it.each(['INACTIVE', 'SUSPENDED', 'DEACTIVATED'] as const)(
     'rejects %s accounts from login and /users/me', async status => {
       server.use(

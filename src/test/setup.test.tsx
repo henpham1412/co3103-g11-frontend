@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import { identityApiUrl } from './server'
 
 function TestButton() {
   const [clicked, setClicked] = useState(false)
@@ -13,4 +14,10 @@ it('supports React 19 rendering, user events, and jest-dom matchers', async () =
   render(<TestButton />)
   await user.click(screen.getByRole('button', { name: 'Click me' }))
   expect(screen.getByRole('button', { name: 'Clicked' })).toBeInTheDocument()
+})
+
+it('blocks unhandled requests instead of contacting a real backend', async () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  await expect(fetch(identityApiUrl('/unhandled-test-request'))).rejects.toThrow()
+  expect(error).toHaveBeenCalled()
 })
