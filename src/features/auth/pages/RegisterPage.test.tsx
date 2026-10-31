@@ -21,6 +21,27 @@ const fields = {
 }
 
 describe('RegisterPage', () => {
+  it('maps canonical details to controls and keeps malformed or unbound diagnostics safe', async () => {
+    server.use(http.post(identityApiUrl('/auth/register'), () => HttpResponse.json({
+      details: [null, 'invalid', { field: 'email' },
+        { field: 'full_name', message: 'Full name contains invalid characters', rejectedValue: 'private' },
+        { field: 'email', message: 'Invalid email format' },
+        { field: 'password', message: 'Password must not exceed 72 bytes' },
+        { field: '__proto__', message: 'SQL secret' }, { field: 'email.value', message: 'SQL secret' },
+        { field: null, message: 'private' }, { message: 'private' }],
+      validationErrors: { fullName: 'Full name is required' },
+    }, { status: 400 })))
+    const { user } = renderAuthPage('/register')
+    setAuthFields(fields)
+    await user.click(screen.getByRole('button', { name: 'Create Account' }))
+    await waitFor(() => expect(screen.getByLabelText('Full Name')).toHaveFocus())
+    expect(screen.getByLabelText('Full Name')).toHaveAccessibleDescription('Full name must not contain control characters.')
+    expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('Please enter a valid email address.')
+    expect(screen.getByLabelText('Password', { exact: true })).toHaveAccessibleDescription(/Password must be at most 72 UTF-8 bytes\./)
+    expect(screen.getByRole('alert')).toHaveTextContent('Unable to create your account.')
+    expect(screen.queryByText(/SQL secret|private|Full name is required/)).not.toBeInTheDocument()
+  })
+
   it("registers normalized identity with unchanged password, then signs in to the intended destination", async () => {
     const received = vi.fn()
     server.use(http.post(identityApiUrl('/auth/register'), async ({ request }) => {
@@ -180,7 +201,7 @@ describe('RegisterPage', () => {
   })
 
   it.each([409, 500])('restores focus on repeated HTTP %s responses', async status => {
-    server.use(http.post(identityApiUrl('/auth/register'), () => HttpResponse.json({ message: 'SQL query contains password', detail: 'Private SQL failure', errors: [{ field: 'email', message: 'private-token' }] }, { status })))
+    server.use(http.post(identityApiUrl('/auth/register'), () => HttpResponse.json({ message: 'SQL query contains password', detail: 'Private SQL failure', details: [{ field: 'password', message: 'Password is required' }], errors: [{ field: 'email', message: 'private-token' }] }, { status })))
     const { user } = renderAuthPage('/register')
     setAuthFields(fields)
     for (let attempt = 0; attempt < 2; attempt += 1) {

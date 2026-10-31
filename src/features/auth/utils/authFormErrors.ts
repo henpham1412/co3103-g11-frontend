@@ -1,4 +1,4 @@
-import type { ApiErrorResponse } from '@/types/auth'
+import type { ApiErrorResponse, ApiFieldError } from '@/types/auth'
 
 export type AuthField = 'fullName' | 'email' | 'password' | 'confirmPassword'
 
@@ -34,18 +34,29 @@ const fallback: Record<AuthField, string> = {
 }
 
 export function authFormErrors<Name extends AuthField>(problem: ApiErrorResponse, names: readonly Name[]) {
-  const entries = [
-    ...Object.entries(problem.validationErrors ?? {}).map(([field, message]) => ({ field, message })),
-    ...(problem.errors ?? []),
-  ]
+  const aliases: Record<string, AuthField> = { full_name: 'fullName', fullName: 'fullName', email: 'email', password: 'password', confirmPassword: 'confirmPassword' }
+  const sources = [
+    problem.details ?? [],
+    Object.entries(problem.validationErrors ?? {}).map(([field, message]) => ({ field, message })),
+    problem.errors ?? [],
+  ].map(entries => entries.map(entry => ({
+    ...entry, field: typeof entry.field === 'string' && Object.hasOwn(aliases, entry.field) ? aliases[entry.field] : undefined,
+  })))
+  const entries = new Map<AuthField, ApiFieldError[]>()
+  for (const source of sources) {
+    for (const name of names) {
+      const matches = source.filter(entry => entry.field === name)
+      if (matches.length && !entries.has(name)) entries.set(name, matches)
+    }
+  }
   const fields = names.map(name => ({
     name,
-    errors: [...new Set(entries.filter(entry => entry.field === name).map(({ message }) =>
+    errors: [...new Set((entries.get(name) ?? []).map(({ message }) =>
       Object.hasOwn(messages[name], message) ? messages[name][message] : fallback[name],
     ))],
   }))
   return {
     fields,
-    hasUnbound: entries.some(entry => !names.some(name => name === entry.field)),
+    hasUnbound: sources.flat().some(entry => !names.some(name => name === entry.field)),
   }
 }

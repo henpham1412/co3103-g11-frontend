@@ -10,6 +10,7 @@ import { authRule, normalizeEmail, validateEmail, validateLoginPassword } from '
 import { authFormErrors, type AuthField } from '../utils/authFormErrors'
 import { loginErrorMessage } from '../utils/authErrorPresentation'
 import { returnDestination } from '../utils/returnDestination'
+import { resolveLoginContext } from '../utils/loginContext'
 
 interface LoginValues {
   email: string
@@ -24,6 +25,7 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const navigationState = isRecord(location.state) ? location.state : {}
   const [submitting, setSubmitting] = useState(false)
+  const [loginContext] = useState(() => resolveLoginContext())
   const [feedback, setFeedback] = useState<{ message?: string; field?: AuthField }>()
   const [forgotOpen, setForgotOpen] = useState(false)
   const errorRef = useRef<HTMLDivElement>(null)
@@ -50,13 +52,13 @@ export default function LoginPage() {
   const flashType = navigationState.messageType === 'info' || sessionExpired ? 'info' : 'success'
 
   async function submit(values: LoginValues) {
-    if (pending.current) return
+    if (pending.current || !loginContext.ok) return
     const controller = new AbortController()
     pending.current = controller
     setSubmitting(true)
     setFeedback(undefined)
     try {
-      await login({ email: normalizeEmail(values.email), password: values.password }, values.rememberMe, controller.signal)
+      await login({ email: normalizeEmail(values.email), password: values.password, ...loginContext.context }, values.rememberMe, controller.signal)
       if (active.current) void navigate(returnDestination(navigationState.from), { replace: true })
     } catch (failure) {
       if (!active.current || controller.signal.aborted) return
@@ -84,6 +86,7 @@ export default function LoginPage() {
       <h1 id="auth-title" className="auth-title">Sign In to G11 LMS</h1>
       <p className="auth-subtitle">Enter your credentials to access your courses and dashboard</p>
       {flash && <Alert className="auth-alert" type={flashType} title={flash} showIcon role="status" />}
+      {!loginContext.ok && <Alert className="auth-alert" type="error" title={loginErrorMessage(loginContext.error)} showIcon role="alert" />}
       {feedback?.message && (
         <div ref={errorRef} className="auth-alert" role="alert" tabIndex={-1}>
           <Alert type="error" title={feedback.message} showIcon role="presentation" />
@@ -97,7 +100,7 @@ export default function LoginPage() {
         initialValues={{ email: typeof navigationState.email === 'string' ? normalizeEmail(navigationState.email) : '', rememberMe: false }}
         onFinish={submit}
         scrollToFirstError={{ focus: true }}
-        disabled={submitting}
+        disabled={submitting || !loginContext.ok}
         aria-label="Sign in"
         aria-busy={submitting}
         noValidate

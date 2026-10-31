@@ -9,6 +9,7 @@ export class ApiError extends Error implements ApiErrorResponse {
   readonly timestamp: string
   readonly path: string
   readonly lockedUntil?: string
+  readonly details?: ApiFieldError[]
   readonly validationErrors?: Record<string, string>
   readonly errors?: ApiFieldError[]
 
@@ -21,6 +22,7 @@ export class ApiError extends Error implements ApiErrorResponse {
     this.timestamp = details.timestamp
     this.path = details.path
     this.lockedUntil = details.lockedUntil
+    this.details = details.details
     this.validationErrors = details.validationErrors
     this.errors = details.errors
   }
@@ -32,6 +34,14 @@ const fallbackErrors: Record<number, [string, string]> = {
   403: ['Forbidden', 'Your account is inactive or access is denied.'],
   409: ['Conflict', 'The request conflicts with existing data.'],
   423: ['Locked', 'Your account is temporarily locked. Please try again later.'],
+}
+
+function fieldErrors(value: unknown): ApiFieldError[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value.filter((entry): entry is ApiFieldError =>
+    isRecord(entry) && isNonEmptyString(entry.message)
+    && (entry.field === undefined || entry.field === null || typeof entry.field === 'string'),
+  ).map(({ field, message }) => ({ ...(field === undefined ? {} : { field }), message }))
 }
 
 export function normalizeApiError(error: unknown, endpoint?: string): ApiError {
@@ -64,12 +74,11 @@ export function normalizeApiError(error: unknown, endpoint?: string): ApiError {
       code: isNonEmptyString(data.code) ? data.code : duplicateEmail ? 'DUPLICATE_EMAIL' : undefined,
       timestamp: isNonEmptyString(data.timestamp) ? data.timestamp : timestamp,
       path: isNonEmptyString(data.path) ? data.path : isNonEmptyString(data.instance) ? data.instance : path,
-      lockedUntil: isNonEmptyString(data.lockedUntil) ? data.lockedUntil : undefined,
+      lockedUntil: isNonEmptyString(data.locked_until) ? data.locked_until
+        : isNonEmptyString(data.lockedUntil) ? data.lockedUntil : undefined,
+      details: fieldErrors(data.details),
       validationErrors,
-      errors: Array.isArray(data.errors) ? data.errors.filter((entry): entry is ApiFieldError =>
-        isRecord(entry) && isNonEmptyString(entry.message)
-        && (entry.field === undefined || entry.field === null || typeof entry.field === 'string'),
-      ).map(({ field, message }) => ({ field, message })) : undefined,
+      errors: fieldErrors(data.errors),
     })
   }
 

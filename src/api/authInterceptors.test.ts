@@ -19,6 +19,19 @@ const failure = (status: number): AxiosAdapter => async config => {
   throw new AxiosError('Request failed', 'ERR_BAD_RESPONSE', config, undefined, { ...success(config), status })
 }
 
+it.each([400, 403, 500])('uses transport HTTP %s despite forged status and auth paths in LMS diagnostics', async status => {
+  const original = snapshot.session
+  await expect(lmsClient.get('/private', { adapter: async config => {
+    throw new AxiosError('Request failed', 'ERR_BAD_RESPONSE', config, undefined, {
+      ...success(config), status, data: { status: 401, path: '/auth/login', details: [{ field: 'email', message: 'secret' }] },
+    })
+  } })).rejects.toMatchObject({ response: { status } })
+  expect(purgeSession).not.toHaveBeenCalled()
+  expect(snapshot.session).toBe(original)
+  if (status === 403) expect(onLmsForbidden).toHaveBeenCalledOnce()
+  else expect(onLmsForbidden).not.toHaveBeenCalled()
+})
+
 beforeEach(() => {
   snapshot = { session: authSession(), generation: 1 }
   cleanup = installAuthInterceptors({ getSessionSnapshot: () => snapshot, purgeSession, onLmsForbidden })

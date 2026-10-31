@@ -2,19 +2,150 @@ import { AxiosError } from 'axios'
 import { ApiError } from '@/api/apiError'
 import { errorEnvelope } from '@/test/fixtures/auth'
 import { loginErrorMessage } from '../utils/authErrorPresentation'
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { authApi } from '@/api/authApi'
 import { AUTH_SESSION_KEY, tokenStorage } from '@/features/auth/services/tokenStorage'
 import { loginResponse } from '@/test/fixtures/auth'
+import { wireLoginResponse } from '@/test/fixtures/authWire'
 import { deferred, fillAuthFields, renderAuthPage, setAuthFields } from '@/test/renderAuthPage'
 import { identityApiUrl, server } from '@/test/server'
 import type { LoginResponse } from '@/types/auth'
 
 const credentials = { Email: 'Student@Example.COM', Password: 'password' }
 
+function configureLms() {
+  vi.stubEnv('VITE_AUTH_MODE', 'lms')
+  vi.stubEnv('VITE_LMS_CLIENT_ID', 'g11-lms')
+  vi.stubEnv('VITE_LMS_REDIRECT_URI', 'https://LMS.example:443/%61?view=mine#week1')
+}
+
 describe('LoginPage', () => {
+  it('keeps deployment context across auth navigation and ignores query/state overrides', async () => {
+    configureLms()
+    const received = vi.fn()
+    server.use(http.post(identityApiUrl('/auth/login'), async ({ request }) => {
+      received(await request.json())
+      return HttpResponse.json(wireLoginResponse({ client_id: 'g11-lms' }))
+    }))
+    const { user, router } = renderAuthPage('/login', { from: '/courses?view=mine#current' }, { integration: true })
+    await user.click(screen.getByRole('link', { name: 'Create account' }))
+    await user.click(screen.getByRole('link', { name: 'Sign in' }))
+    await act(() => router.navigate('/login?client_id=attacker&redirect_uri=https://outside.example', {
+      state: { ...router.state.location.state, clientId: 'attacker', redirectUri: 'https://outside.example' },
+    }))
+    setAuthFields(credentials)
+    await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
+    await waitFor(() => expect(router.state.location).toMatchObject({ pathname: '/courses', search: '?view=mine', hash: '#current' }))
+    expect(received).toHaveBeenCalledExactlyOnceWith({
+      email: 'student@example.com', password: 'password', client_id: 'g11-lms',
+      redirect_uri: 'https://LMS.example:443/%61?view=mine#week1',
+    })
+    const session = tokenStorage.getSession()
+    expect(session).not.toBeNull()
+    expect(JSON.stringify(router.state.location)).not.toContain(session!.accessToken)
+    expect(session).not.toHaveProperty('clientId')
+    expect(session).not.toHaveProperty('redirectUri')
+  })
+
+  it.each([undefined, 'central-identity', 'other-client'])('does not store a session or navigate for invalid LMS echo: %s', async client_id => {
+    configureLms()
+    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json(wireLoginResponse({ client_id }))))
+    const { user, router } = renderAuthPage('/login', undefined, { integration: true })
+    setAuthFields(credentials)
+    await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The sign-in service is temporarily unavailable.')
+    expect(router.state.location.pathname).toBe('/login')
+    expect(tokenStorage.getSession()).toBeNull()
+    expect(localStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
+    expect(sessionStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
+  })
+
+  it.each([
+    ['lms', '', ''], ['lms', 'g11-lms', ''], ['lms', '', 'https://lms.example/'],
+    ['lms', ' ', 'https://lms.example/'], ['unknown', '', ''],
+    ['lms', 'g11-lms', 'https://user:secret@lms.example/'], ['lms', 'g11-lms', 'javascript:alert(1)'],
+    ['standalone', 'g11-lms', 'https://lms.example/'],
+  ])('blocks credentials for invalid config %s / %s / %s', async (mode, clientId, redirectUri) => {
+    vi.stubEnv('VITE_AUTH_MODE', mode)
+    vi.stubEnv('VITE_LMS_CLIENT_ID', clientId)
+    vi.stubEnv('VITE_LMS_REDIRECT_URI', redirectUri)
+    const login = vi.spyOn(authApi, 'login')
+    renderAuthPage('/login', undefined, { integration: true })
+    expect(screen.getByRole('alert')).toHaveTextContent('Sign-in is not configured correctly.')
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/secret|javascript|lms\.example/)
+    expect(screen.getByRole('button', { name: 'Sign In to LMS' })).toBeDisabled()
+    setAuthFields(credentials)
+    await act(async () => { fireEvent.submit(screen.getByRole('form', { name: 'Sign in' })) })
+    expect(login).not.toHaveBeenCalled()
+    expect(tokenStorage.getSession()).toBeNull()
+  })
+
+  it.each(['INVALID_CLIENT', 'INVALID_REDIRECT_URI'])('shows safe configuration feedback for backend %s', async code => {
+    configureLms()
+    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json({
+      code, message: 'private client configuration', details: [{ field: 'client_id', message: 'private client configuration' }],
+    }, { status: 400 })))
+    const { user, router } = renderAuthPage('/login', undefined, { integration: true })
+    setAuthFields(credentials)
+    await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in is not configured correctly.')
+    expect(screen.queryByText('private client configuration')).not.toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/login')
+    expect(tokenStorage.getSession()).toBeNull()
+    expect(screen.getByLabelText('Email')).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it.each([undefined, 'central-identity'])('allows standalone response client %s without sending context', async client_id => {
+    const received = vi.fn()
+    server.use(http.post(identityApiUrl('/auth/login'), async ({ request }) => {
+      received(await request.json())
+      return HttpResponse.json(wireLoginResponse({ client_id }))
+    }))
+    const { user, router } = renderAuthPage('/login', { from: 'https://outside.example/' }, { integration: true })
+    setAuthFields(credentials)
+    await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(received).toHaveBeenCalledExactlyOnceWith({ email: 'student@example.com', password: 'password' })
+    expect(tokenStorage.getSession()).not.toBeNull()
+    expect(router.state.location.search).toBe('')
+  })
+
+  it('maps details safely, focuses the first field and clears stale diagnostics on retry', async () => {
+    let attempts = 0
+    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json(++attempts === 1 ? {
+      status: 401, details: [null, { field: 'email', message: 'Invalid email format' },
+        { field: 'password', message: '<img src=x onerror=alert(1)> secret' }, { field: 'redirect_uri', message: 'SQL secret' }],
+      validationErrors: { email: 'Email is required' },
+    } : { details: [] }, { status: 400 })))
+    const { user } = renderAuthPage('/login')
+    setAuthFields(credentials)
+    await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
+    expect(await screen.findByText('Please enter a valid email address.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('Email')).toHaveFocus())
+    expect(screen.getByLabelText('Password')).toHaveAccessibleDescription('Please check your password.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Please check your sign-in details')
+    expect(screen.queryByText(/SQL secret|onerror|Email is required/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus())
+    expect(screen.getByLabelText('Email')).not.toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Password')).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('ignores field diagnostics on HTTP 500 and focuses the service banner', async () => {
+    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json({
+      status: 401, details: [{ field: 'email', message: 'Email is required' }], message: 'SQL secret',
+    }, { status: 500 })))
+    const { user } = renderAuthPage('/login', undefined, { integration: true })
+    setAuthFields(credentials)
+    await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus())
+    expect(screen.getByRole('alert')).toHaveTextContent('The sign-in service is temporarily unavailable.')
+    expect(screen.getByLabelText('Email')).not.toHaveAttribute('aria-invalid', 'true')
+    expect(screen.queryByText(/SQL secret|Email is required/)).not.toBeInTheDocument()
+  })
+
   it.each([false, true])('logs in through the real provider/API with rememberMe=%s', async rememberMe => {
     const login = vi.spyOn(authApi, 'login')
     const { user, router } = renderAuthPage('/login', { from: '/courses?view=mine#current' }, { integration: true })
@@ -76,7 +207,7 @@ describe('LoginPage', () => {
   })
 
   it("uses generic 401 feedback, repeated focus and correction before retry", async () => {
-    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json({ message: 'This email does not exist', code: 'ACCOUNT_LOCKED', lockedUntil: '2026-11-01T12:30:00Z', validationErrors: { email: 'This account is locked' } }, { status: 401 })))
+    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json({ message: 'This email does not exist', code: 'ACCOUNT_LOCKED', locked_until: '2026-11-01T12:30:00Z', details: [{ field: 'email', message: 'This account is locked' }], validationErrors: { email: 'This account is locked' } }, { status: 401 })))
     const { user, router } = renderAuthPage('/login')
     setAuthFields(credentials)
     await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
@@ -100,7 +231,7 @@ describe('LoginPage', () => {
 
   it("formats lockedUntil in local time only for HTTP 423", async () => {
     const lockedUntil = '2026-11-01T12:30:00Z'
-    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json({ lockedUntil, code: 'ACCOUNT_LOCKED' }, { status: 423 })))
+    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json({ locked_until: lockedUntil, code: 'ACCOUNT_LOCKED' }, { status: 423 })))
     const { user } = renderAuthPage('/login')
     setAuthFields(credentials)
     await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))

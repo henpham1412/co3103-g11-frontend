@@ -2,6 +2,7 @@ import type { AuthUser, CurrentUserResponse, LoginRequest, LoginResponse, Regist
 import type { AuthIdentityDto, LoginRequestDto, RegisterRequestDto, UserProfileDto } from '@/types/authWire'
 import { calculateSessionExpiry } from '@/utils/sessionExpiry'
 import { isNonEmptyString, isRecord, isUserStatus } from '@/utils/typeGuards'
+import { isLmsLoginContext, loginConfigurationError } from '@/features/auth/utils/loginContext'
 import { ApiError } from './apiError'
 
 function invalidResponse(endpoint: string): ApiError {
@@ -60,8 +61,14 @@ export function serializeRegisterRequest({ email, password, fullName }: Register
   return { email, password, full_name: fullName }
 }
 
-export function serializeLoginRequest({ email, password }: LoginRequest): LoginRequestDto {
-  return { email, password }
+export function serializeLoginRequest(payload: LoginRequest): LoginRequestDto {
+  if (!isRecord(payload) || !isNonEmptyString(payload.email) || !isNonEmptyString(payload.password)) {
+    throw loginConfigurationError()
+  }
+  const { email, password } = payload
+  if (!('clientId' in payload) && !('redirectUri' in payload)) return { email, password }
+  if (!isLmsLoginContext(payload)) throw loginConfigurationError()
+  return { email, password, client_id: payload.clientId, redirect_uri: payload.redirectUri }
 }
 
 export function decodeRegisterResponse(data: unknown): RegisterResponse {
@@ -72,13 +79,14 @@ export function decodeRegisterResponse(data: unknown): RegisterResponse {
   return decodeIdentity(data)
 }
 
-export function decodeLoginResponse(data: unknown): LoginResponse {
+export function decodeLoginResponse(data: unknown, expectedClientId?: string): LoginResponse {
   const endpoint = '/auth/login'
   if (!isRecord(data) || !isIdentityDto(data.user) || !isNonEmptyString(data.access_token)
     || data.token_type !== 'Bearer' || typeof data.expires_in !== 'number'
     || !Number.isFinite(data.expires_in) || data.expires_in <= 0
     || calculateSessionExpiry(data.access_token, data.expires_in) <= Date.now()
-    || (data.client_id !== undefined && !isNonEmptyString(data.client_id))) {
+    || (data.client_id !== undefined && !isNonEmptyString(data.client_id))
+    || (expectedClientId !== undefined && data.client_id !== expectedClientId)) {
     throw invalidResponse(endpoint)
   }
   const user = decodeIdentity(data.user)

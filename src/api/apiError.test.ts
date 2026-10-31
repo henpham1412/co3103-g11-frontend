@@ -11,6 +11,30 @@ function responseError(status: number, data: unknown = {}, url = '/auth/login') 
 }
 
 describe('normalizeApiError', () => {
+  it('projects valid details while dropping malformed siblings and private properties', () => {
+    const details: unknown[] = [null, 'bad', {}, { message: 42 }, { message: ' ' }, { field: [], message: 'bad' },
+      { field: 'full_name', message: 'Full name is required', rejectedValue: 'private', constructor: 'unsafe' },
+      { field: null, message: 'Unbound' }, { message: 'Global' }]
+    const result = normalizeApiError(responseError(400, { status: 401, code: 'VALIDATION_ERROR', details }))
+    expect(result).toMatchObject({ status: 400, code: 'VALIDATION_ERROR', details: [
+      { field: 'full_name', message: 'Full name is required' }, { field: null, message: 'Unbound' }, { message: 'Global' },
+    ] })
+    expect(JSON.stringify(result.details)).not.toMatch(/private|constructor|rejectedValue/)
+    expect(normalizeApiError(result)).toBe(result)
+  })
+
+  it.each([undefined, null, {}, 'invalid', []].map(details => ({ details })))('tolerates absent or malformed details: $details', ({ details }) => {
+    const result = normalizeApiError(responseError(400, { code: 'INVALID_INPUT', message: 'Invalid input', details }))
+    expect(result).toMatchObject({ status: 400, code: 'INVALID_INPUT' })
+    expect(result.details).toEqual(Array.isArray(details) ? [] : undefined)
+  })
+
+  it('prioritizes snake_case lock metadata over its legacy alias', () => {
+    expect(normalizeApiError(responseError(423, {
+      locked_until: '2026-11-01T12:30:00Z', lockedUntil: '2026-11-02T12:30:00Z',
+    })).lockedUntil).toBe('2026-11-01T12:30:00Z')
+  })
+
   it("keeps valid validation siblings and rejects malformed maps and arrays", () => {
     expect(normalizeApiError(responseError(400, {
       validationErrors: {

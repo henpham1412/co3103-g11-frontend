@@ -17,10 +17,14 @@ export interface AuthUser {
 
 export type RegisterResponse = AuthUser
 
-export interface LoginRequest {
+export type LoginContext =
+  | { clientId?: never; redirectUri?: never }
+  | { clientId: string; redirectUri: string }
+
+export type LoginRequest = {
   email: string
   password: string
-}
+} & LoginContext
 
 export interface LoginResponse extends AuthUser {
   accessToken: string
@@ -58,6 +62,7 @@ export interface ApiErrorResponse {
   path: string
   code?: string
   lockedUntil?: string
+  details?: ApiFieldError[]
   validationErrors?: Record<string, string>
   errors?: ApiFieldError[]
 }

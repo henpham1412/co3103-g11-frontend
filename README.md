@@ -61,9 +61,41 @@ Each client uses the first non-empty value in the following order:
 
 The preferred variable wins when both names are set. Base URLs include `/api/v1`;
 API methods append paths such as `/auth/login` without repeating that prefix.
-Restart the development server after changing environment variables.
+Restart the development server after changing environment variables. For preview,
+rebuild first: `VITE_*` values are embedded at build time, so restarting preview
+alone does not change them.
 
 Environment variables prefixed with `VITE_` are exposed to client-side code. Do not put passwords, signing keys, or other secrets in these variables.
+
+Configure the login context separately from API URLs:
+
+| Variable | Rule |
+|---|---|
+| `VITE_AUTH_MODE` | `lms` (default) or explicitly `standalone`. Unknown or blank modes block sign-in. |
+| `VITE_LMS_CLIENT_ID` | Required in LMS mode: an active client provisioned in Central Identity, 1–100 characters without whitespace. |
+| `VITE_LMS_REDIRECT_URI` | Required in LMS mode: a full HTTP(S) URL without credentials, whitespace or backslashes, matching a registered redirect URI exactly. |
+
+For example, after provisioning a client named `g11-lms` with the redirect URI
+`http://localhost:5173/`, set:
+
+```dotenv
+VITE_AUTH_MODE=lms
+VITE_LMS_CLIENT_ID=g11-lms
+VITE_LMS_REDIRECT_URI=http://localhost:5173/
+```
+
+The example does not provision a client or imply one already exists. The app has
+no `/auth/callback` route. The URI is request context sent to Central Identity;
+successful login still navigates to the validated internal `from` destination.
+Query parameters and router state cannot override deployment context. JWTs are
+never placed in URLs, and login does not redirect to an external origin.
+
+For standalone login, set `VITE_AUTH_MODE=standalone` and leave both LMS variables
+empty or unset. Both context fields are then omitted from the request. Setting
+either LMS variable in standalone mode is a configuration error. Missing or invalid
+LMS configuration shows a safe banner and disables submission; it never silently
+falls back to standalone. `.env.example` intentionally leaves provisioning values
+empty, so configure them before signing in.
 
 ### 4. Start the Development Server
 
@@ -97,7 +129,12 @@ serializes requests and validates unknown responses before mapping them:
   required or generated. The UI uses a local success message.
 - Login reads `{ access_token, token_type, expires_in, user, client_id? }`, with
   identity nested under `user`, then returns a flat camelCase internal model.
-  Login currently sends only email/password; LMS client context is separate work.
+  LMS requests send `{ email, password, client_id, redirect_uri }`; standalone
+  requests send only `{ email, password }`. The serializer rejects incomplete or
+  malformed context before HTTP. LMS responses must echo the exact requested
+  `client_id`; missing or mismatched values produce `502 INVALID_AUTH_RESPONSE`
+  without saving a session. Standalone permits an omitted response `client_id`
+  or the backend's `central-identity` value.
 - `/users/me` reads `{ user_id, email, full_name, status, profile? }`. Profile may
   be omitted, null, empty, or contain the documented optional fields. Profile
   keys are mapped explicitly and kept in memory, outside persisted sessions.
@@ -172,12 +209,24 @@ trimmed or normalized: registration requires JavaScript length >= 8 and both
 forms require nonblank passwords and enforce <= 72 UTF-8 bytes. Login intentionally
 accepts shorter passwords. The password checklist mirrors these rules; full names
 reject all Unicode control characters. Both forms map supported HTTP 400
-`validationErrors` and `errors: [{ field, message }]` extensions into the form and
-focus the first invalid field. Known validation messages use local translations;
+`details: [{ field?, message }]` diagnostics into the form, with `full_name`
+mapped to `fullName`, and focus the first invalid field. The frontend accepts
+optional/null `field` for unbound diagnostics. DOC-05 defines the optional
+`details` envelope; this item schema is the frontend integration contract, not
+a guarantee that every deployed backend emits it. Legacy `validationErrors`
+maps and `errors` arrays remain supported. Per control, diagnostics use the first
+available source in order `details` → `validationErrors` → `errors`, deduplicated
+after field mapping and translation. Malformed entries are discarded while valid
+siblings remain. Known validation messages use local translations;
 unknown field diagnostics and unbound errors use safe local fallback copy.
 Registration conflicts bind to email. HTTP 401 login failures always use generic
 credential copy, even if the body supplies account lock metadata. Only HTTP 423
-shows a lock deadline. Raw backend messages are not displayed by either form.
+shows a valid lock deadline (`locked_until`, or legacy `lockedUntil`). Context
+fields such as `client_id` and `redirect_uri`, unknown fields and dotted paths
+produce a safe banner and never create form controls. Raw backend messages are
+not displayed by either form. HTTP status and the requested endpoint determine
+behavior; body status/path cannot cause logout or infer a registration conflict.
+LMS 403 and server errors preserve the current session.
 API failures focus the first invalid field or the error banner, including repeated
 identical failures. Error/placeholder text and keyboard focus colors meet WCAG AA
 contrast thresholds. Input and checkbox borders use a darker component token;
@@ -193,7 +242,9 @@ network failure (the setup self-test explicitly accounts for its deliberate
 unmatched request). Default handlers live in `src/test/server.ts`; independent
 snake_case HTTP fixtures live in `src/test/fixtures/authWire.ts`. CamelCase
 fixtures in `src/test/fixtures/auth.ts` are for internal API mocks and storage. Override
-handlers in individual tests with `server.use(...)`. No live backend is required.
+handlers in individual tests with `server.use(...)`. UI setup stubs standalone
+mode before each test; LMS tests override all context variables explicitly, so
+local deployment settings do not affect the suite. No live backend is required.
 
 Contract regressions cover registration without timestamps, nested login,
 optional profiles, malformed/legacy responses, and registration → login →
@@ -203,11 +254,46 @@ DOC-05 `/users/me` response before live restoration can work; the legacy
 `{ id, fullName, role, ... }` response is deliberately unsupported. The backend
 DTO/profile change belongs in its own repository.
 
-For production browser verification, run `npm run build`, then
-`npm run preview -- --host 127.0.0.1 --port 4179`. With the configured backend
-services available, open the printed URL and check registration, sign-in,
-protected-route redirects, session restoration, and sign-out across tabs.
-The Vitest suite mocks API responses and does not require a live backend.
+For production browser verification:
+
+```bash
+npm run build
+npm run preview -- --host localhost --port 5173 --strictPort
+```
+
+Open **http://localhost:5173**. Stop any development server using that port first.
+Central Identity and LMS default CORS allowlists include `http://localhost:3000`
+and `http://localhost:5173`. `--strictPort` prevents an automatic move to 5174
+that would change the origin and fail CORS. Hostname, scheme and port all matter;
+`127.0.0.1` is a different origin from `localhost`.
+
+With both configured services running, verify preflights (use `curl.exe` in
+PowerShell):
+
+```bash
+curl -i -X OPTIONS http://localhost:8080/api/v1/auth/login -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type"
+curl -i -X OPTIONS http://localhost:8081/api/v1/users/me -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization"
+```
+
+Expect a successful HTTP response, `Access-Control-Allow-Origin:
+http://localhost:5173`, and the requested method/header allowed. Preflights do not
+need a Bearer token. A connection failure means the service is unavailable; it
+does not establish a CORS failure. A custom preview origin must be allowed in
+**both** services. CORS allowlists and the client's registered redirect URIs are
+independent settings; update both as needed and rebuild after changing `VITE_*`.
+
+In the browser, check registration → login → protected home → refresh → logout
+in two tabs, with remember-me on and off, and in both LMS and standalone modes.
+Verify invalid client/redirect responses keep the user on login without a saved
+session. Use a dedicated test account and a provisioned test client; never save
+passwords or tokens in verification logs. Vitest/MSW results do not prove browser
+CORS or live backend compatibility.
+
+Central Identity must enforce the complete client/redirect pair and exact URI
+allowlist before issuing a JWT, and echo the validated client. The backend
+baseline reviewed in PR15 (`2358fb5`) still accepts client-only requests and emits
+legacy error diagnostics; those backend changes belong in its own repository.
+Frontend rejection of incomplete pairs does not replace server validation.
 
 Before handing off a change, run `npm run test`, `npm run lint`, and
 `npm run build`. Tests cover API payloads, response validation, DOC-05 errors,

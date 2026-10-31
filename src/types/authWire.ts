@@ -18,9 +18,24 @@ export interface RegisterResponseDto extends AuthIdentityDto {
   message?: string
 }
 
-export interface LoginRequestDto {
+export type LoginRequestDto = {
   email: string
   password: string
+} & (
+  | { client_id?: never; redirect_uri?: never }
+  | { client_id: string; redirect_uri: string }
+)
+
+export interface ValidationDetailDto {
+  field?: string | null
+  message: string
+}
+
+export interface ApiErrorDto {
+  code: string
+  message: string
+  details?: ValidationDetailDto[]
+  locked_until?: string
 }
 
 export interface LoginResponseDto {

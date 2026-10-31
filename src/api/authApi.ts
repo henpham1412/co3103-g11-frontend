@@ -22,8 +22,9 @@ export async function register(payload: RegisterRequest, signal?: AbortSignal): 
 export async function login(payload: LoginRequest, signal?: AbortSignal): Promise<LoginResponse> {
   const endpoint = '/auth/login'
   try {
-    const { data } = await centralIdentityClient.post<unknown>(endpoint, serializeLoginRequest(payload), { signal, skipAuth: true })
-    return decodeLoginResponse(data)
+    const request = serializeLoginRequest(payload)
+    const { data } = await centralIdentityClient.post<unknown>(endpoint, request, { signal, skipAuth: true })
+    return decodeLoginResponse(data, request.client_id)
   } catch (error) {
     throw normalizeApiError(error, endpoint)
   }

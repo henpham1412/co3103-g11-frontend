@@ -9,7 +9,7 @@ import { authApi } from '@/api/authApi'
 import { AUTH_SESSION_KEY, tokenStorage } from '@/features/auth/services/tokenStorage'
 import AuthTestMotion from '@/test/AuthTestMotion'
 import { authSession, createToken, loginResponse, validUser } from '@/test/fixtures/auth'
-import { wireCurrentUser } from '@/test/fixtures/authWire'
+import { wireCurrentUser, wireLoginResponse } from '@/test/fixtures/authWire'
 import { identityApiUrl, server } from '@/test/server'
 import { deferred, fillAuthFields } from '@/test/renderAuthPage'
 import type { LoginResponse } from '@/types/auth'
@@ -115,7 +115,20 @@ it('keeps the workspace usable when the session expiry exceeds the date display 
   expect(screen.getByText('Unavailable')).toBeInTheDocument()
 })
 
-it.each([false, true])('registers, logs in, restores from wire identity and signs out (rememberMe=%s)', async rememberMe => {
+it.each([
+  { mode: 'standalone', rememberMe: false }, { mode: 'standalone', rememberMe: true },
+  { mode: 'lms', rememberMe: false }, { mode: 'lms', rememberMe: true },
+])('registers, logs in, restores from wire identity and signs out ($mode, rememberMe=$rememberMe)', async ({ mode, rememberMe }) => {
+  vi.stubEnv('VITE_AUTH_MODE', mode)
+  if (mode === 'lms') {
+    vi.stubEnv('VITE_LMS_CLIENT_ID', 'g11-lms')
+    vi.stubEnv('VITE_LMS_REDIRECT_URI', 'http://localhost:5173/')
+  }
+  const received = vi.fn()
+  server.use(http.post(identityApiUrl('/auth/login'), async ({ request }) => {
+    received(await request.json())
+    return HttpResponse.json(wireLoginResponse(mode === 'lms' ? { client_id: 'g11-lms' } : {}))
+  }))
   localStorage.clear()
   sessionStorage.clear()
   const user = userEvent.setup()
@@ -142,6 +155,9 @@ it.each([false, true])('registers, logs in, restores from wire identity and sign
   await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
   expect(await screen.findByRole('heading', { name: `Welcome, ${validUser.fullName}` })).toBeInTheDocument()
   expect(router.state.location).toMatchObject({ pathname: '/', search: '?view=mine', hash: '#current' })
+  expect(received).toHaveBeenCalledExactlyOnceWith({ email: validUser.email, password: 'password',
+    ...(mode === 'lms' ? { client_id: 'g11-lms', redirect_uri: 'http://localhost:5173/' } : {}),
+  })
   let header = within(screen.getByRole('banner'))
   expect(header.getByRole('link', { name: 'G11 LMS home' })).toBeInTheDocument()
   expect(header.getByText(validUser.fullName)).toBeInTheDocument()

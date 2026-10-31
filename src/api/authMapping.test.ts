@@ -2,9 +2,51 @@ import { describe, expect, it } from 'vitest'
 import { createToken, expiredToken, validToken, validUser } from '@/test/fixtures/auth'
 import { wireCurrentUser, wireIdentity, wireLoginResponse, wireProfile, wireRegisteredUser } from '@/test/fixtures/authWire'
 import { isAuthUser } from '@/utils/typeGuards'
+import type { LoginRequest } from '@/types/auth'
+import type { LoginRequestDto } from '@/types/authWire'
 import { decodeCurrentUserResponse, decodeLoginResponse, decodeRegisterResponse, serializeLoginRequest, serializeRegisterRequest } from './authMapping'
 
 describe('request serialization', () => {
+  const credentials = { email: 'student@example.com', password: ' password ' }
+  const context = { clientId: 'g11-lms', redirectUri: 'https://LMS.example:443/%61?view=mine#week1' }
+
+  it('sends an exact LMS pair and excludes unrelated fields', () => {
+    expect(serializeLoginRequest({ ...credentials, ...context, rememberMe: true } as LoginRequest)).toEqual({
+      ...credentials, client_id: context.clientId, redirect_uri: context.redirectUri,
+    })
+  })
+
+  it.each([
+    null, [], 'invalid', {}, { email: 1, password: 'password' }, { ...credentials, password: null },
+    { ...credentials, clientId: 'g11-lms' }, { ...credentials, redirectUri: context.redirectUri },
+    { ...credentials, clientId: undefined, redirectUri: undefined },
+    ...[null, '', ' ', 42, 'a'.repeat(101)].map(clientId => ({ ...credentials, ...context, clientId })),
+    ...[null, '', ' ', 42, 'ftp://example.com', 'https://user:secret@example.com'].map(redirectUri => ({ ...credentials, ...context, redirectUri })),
+  ])('rejects malformed callers before serialization: %j', input => {
+    expect(() => serializeLoginRequest(input as LoginRequest)).toThrow(expect.objectContaining({ code: 'INVALID_LOGIN_CONFIGURATION' }))
+  })
+
+  it('requires complete pairs in both TypeScript request models', () => {
+    // @ts-expect-error A client ID requires its redirect URI.
+    const model: LoginRequest = { ...credentials, clientId: 'g11-lms' }
+    // @ts-expect-error A redirect URI requires its client ID.
+    const wire: LoginRequestDto = { ...credentials, redirect_uri: context.redirectUri }
+    expect(model).not.toHaveProperty('redirectUri')
+    expect(wire).not.toHaveProperty('client_id')
+  })
+
+  it('requires the response to echo the requested LMS client', () => {
+    for (const client_id of [undefined, 'other-client', 'central-identity']) {
+      expect(() => decodeLoginResponse(wireLoginResponse({ client_id }), context.clientId)).toThrow(expect.objectContaining({
+        status: 502, code: 'INVALID_AUTH_RESPONSE',
+      }))
+    }
+    expect(decodeLoginResponse(wireLoginResponse({ client_id: context.clientId }), context.clientId).clientId).toBe(context.clientId)
+    for (const client_id of [undefined, 'central-identity']) {
+      expect(decodeLoginResponse(wireLoginResponse({ client_id })).clientId).toBe(client_id)
+    }
+  })
+
   it('allowlists wire fields and preserves the password verbatim', () => {
     const input = {
       email: 'student@example.com', password: ' password ', fullName: 'Test Student',

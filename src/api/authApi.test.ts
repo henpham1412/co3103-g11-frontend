@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { LoginRequest } from '@/types/auth'
 import { errorEnvelope, expiredToken, loginResponse, registeredUser, validToken, validUser } from '@/test/fixtures/auth'
 import { wireCurrentUser, wireIdentity, wireLoginResponse, wireRegisteredUser } from '@/test/fixtures/authWire'
 import { identityApiUrl, server } from '@/test/server'
@@ -42,6 +43,33 @@ describe('register', () => {
 })
 
 describe('login', () => {
+  const context = { clientId: 'g11-lms', redirectUri: 'https://LMS.example:443/%61?view=mine#week1' }
+
+  it('sends complete LMS context verbatim and validates the response echo', async () => {
+    const received = vi.fn()
+    server.use(http.post(identityApiUrl('/auth/login'), async ({ request }) => {
+      received(await request.json())
+      return HttpResponse.json(wireLoginResponse({ client_id: context.clientId }))
+    }))
+    expect(await login({ ...credentials, ...context })).toMatchObject({ clientId: context.clientId })
+    expect(received).toHaveBeenCalledExactlyOnceWith({ ...credentials, client_id: context.clientId, redirect_uri: context.redirectUri })
+  })
+
+  it('never sends malformed or incomplete context to HTTP', async () => {
+    const received = vi.fn(() => HttpResponse.json(wireLoginResponse()))
+    server.use(http.post(identityApiUrl('/auth/login'), received))
+    for (const payload of [null, [], { ...credentials, clientId: 'g11-lms' }, { ...credentials, redirectUri: context.redirectUri },
+      { ...credentials, clientId: undefined, redirectUri: undefined }, { ...credentials, ...context, redirectUri: 'javascript:alert(1)' }]) {
+      await expect(login(payload as LoginRequest)).rejects.toMatchObject({ status: 400, code: 'INVALID_LOGIN_CONFIGURATION' })
+    }
+    expect(received).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, 'other-client'])('rejects a missing or mismatched client echo: %s', async client_id => {
+    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json(wireLoginResponse({ client_id }))))
+    await expect(login({ ...credentials, ...context })).rejects.toMatchObject({ status: 502, code: 'INVALID_AUTH_RESPONSE' })
+  })
+
   it('posts only email and password, excluding rememberMe', async () => {
     const response = wireLoginResponse()
     let body: unknown
