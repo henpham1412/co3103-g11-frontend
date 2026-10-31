@@ -1,7 +1,8 @@
 import { AxiosError, type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { authSession, registeredUser, loginResponse, validToken, validUser } from '@/test/fixtures/auth'
+import { authSession, validToken, validUser } from '@/test/fixtures/auth'
+import { wireCurrentUser, wireLoginResponse, wireRegisteredUser } from '@/test/fixtures/authWire'
 import { identityApiUrl, server } from '@/test/server'
 import { authApi } from './authApi'
 import { installAuthInterceptors, type SessionSnapshot } from './authInterceptors'
@@ -53,7 +54,7 @@ describe('request authentication', () => {
       http.get(identityApiUrl('/users/me'), () => new HttpResponse(null, {
         status: 302, headers: { Location: 'http://localhost:8080/collect' },
       })),
-      http.get('http://localhost:8080/collect', () => { leaked = true; return HttpResponse.json(validUser) }),
+      http.get('http://localhost:8080/collect', () => { leaked = true; return HttpResponse.json(wireCurrentUser) }),
     )
     await expect(centralIdentityClient.get('/users/me', { fetchOptions: { redirect: 'follow' } })).rejects.toThrow()
     expect(leaked).toBe(false)
@@ -93,11 +94,11 @@ describe('request authentication', () => {
       server.use(
         http.post(identityApiUrl('/auth/login'), ({ request }) => {
           headers.push(request.headers.get('authorization'))
-          return HttpResponse.json(loginResponse())
+          return HttpResponse.json(wireLoginResponse())
         }),
         http.post(identityApiUrl('/auth/register'), ({ request }) => {
           headers.push(request.headers.get('authorization'))
-          return HttpResponse.json(registeredUser, { status: 201 })
+          return HttpResponse.json(wireRegisteredUser, { status: 201 })
         }),
       )
       await authApi.login({ email: validUser.email, password: 'password' })

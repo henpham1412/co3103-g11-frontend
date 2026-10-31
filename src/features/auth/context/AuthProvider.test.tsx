@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { AUTH_SYNC_KEY } from '@/features/auth/services/authSync'
 import { AUTH_SESSION_KEY, tokenStorage } from '@/features/auth/services/tokenStorage'
 import { authSession, errorEnvelope, loginResponse, validToken, validUser } from '@/test/fixtures/auth'
+import { wireCurrentUser, wireIdentity, wireLoginResponse, wireProfile } from '@/test/fixtures/authWire'
 import { identityApiUrl, server } from '@/test/server'
 import type { CurrentUserResponse, LoginResponse } from '@/types/auth'
 import { AuthProvider } from './AuthProvider'
@@ -56,18 +57,30 @@ describe('bootstrap and restore recovery', () => {
     expect(getUser).not.toHaveBeenCalled()
   })
 
-  it('verifies a saved token and uses the server profile and role', async () => {
+  it.each([
+    { profile: undefined, expected: undefined },
+    { profile: null, expected: null },
+    { profile: {}, expected: {} },
+    { profile: wireProfile, expected: {
+      avatarUrl: 'https://storage.example.com/avatars/user1.png', bio: 'Computer Science student',
+      phoneNumber: '+84912345678', dateOfBirth: null, locale: 'vi-VN', timezone: 'Asia/Ho_Chi_Minh',
+    } },
+  ])('restores a saved token from canonical identity with profile $profile', async ({ profile, expected }) => {
     const session = authSession()
     tokenStorage.saveSession(session)
     server.use(http.get(identityApiUrl('/users/me'), ({ request }) => {
       expect(request.headers.get('authorization')).toBe(`Bearer ${session.accessToken}`)
-      return HttpResponse.json({ ...validUser, fullName: 'Verified name', role: 'TUTOR' })
+      return HttpResponse.json({ ...wireIdentity, full_name: 'Verified name', profile, role: 'ADMINISTRATOR', privateMetadata: 'excluded' })
     }))
     const { result } = mountAuth()
     expect(result.current.state.status).toBe('initializing')
     await waitFor(() => expect(result.current.state).toMatchObject({
-      status: 'authenticated', user: { fullName: 'Verified name', role: 'TUTOR' }, session: { expiresAt: session.expiresAt },
+      status: 'authenticated', user: { fullName: 'Verified name' }, session: { expiresAt: session.expiresAt, version: 2 },
     }))
+    if (result.current.state.status !== 'authenticated') throw new Error('Expected authenticated')
+    expect(result.current.state.user).toEqual({ ...validUser, fullName: 'Verified name', ...(expected === undefined ? {} : { profile: expected }) })
+    expect(result.current.state.session).toEqual({ ...session, fullName: 'Verified name' })
+    expect(tokenStorage.getSession()).toEqual(session)
   })
 
   it.each([401, 403])('purges a rejected restore with HTTP %s', async status => {
@@ -78,30 +91,46 @@ describe('bootstrap and restore recovery', () => {
     expect(tokenStorage.getSession()).toBeNull()
   })
 
-  it('rejects a 200 restore for an INACTIVE account', async () => {
-    const status = 'INACTIVE'
+  it.each(['SUSPENDED', 'DEACTIVATED'])('rejects a 200 restore for a %s account', async status => {
     tokenStorage.saveSession(authSession())
-    server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...validUser, status })))
+    server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...wireCurrentUser, status })))
     const { result } = mountAuth()
     await waitFor(() => expect(result.current.state).toEqual({ status: 'anonymous', reason: 'unauthorized' }))
     expect(tokenStorage.getSession()).toBeNull()
   })
 
-  it('retains the token after a network failure and supports retry', async () => {
+  it.each([
+    { ...wireCurrentUser, status: 'INACTIVE' },
+    { ...wireCurrentUser, user_id: undefined },
+    { ...wireCurrentUser, profile: { phone_number: 123 } },
+    validUser,
+  ])('keeps invalid-contract restore failures recoverable without authenticating: %j', async data => {
     const session = authSession()
     tokenStorage.saveSession(session)
-    server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.error()))
+    server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json(data)))
+    const { result } = mountAuth()
+    await waitFor(() => expect(result.current.state).toMatchObject({
+      status: 'restore-error', error: { status: 502, code: 'INVALID_AUTH_RESPONSE' },
+    }))
+    expect(tokenStorage.getSession()).toEqual(session)
+  })
+
+  it.each([0, 500])('retains the token after a failure (%s) and supports canonical retry', async status => {
+    const session = authSession()
+    tokenStorage.saveSession(session)
+    server.use(http.get(identityApiUrl('/users/me'), () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })))
     const { result } = mountAuth()
     await waitFor(() => expect(result.current.state.status).toBe('restore-error'))
     expect(tokenStorage.getSession()).toEqual(session)
     const state = result.current.state
     if (state.status !== 'restore-error') throw new Error('Expected restore-error')
     expect(state.error).toBeInstanceOf(ApiError)
-    expect(state.error.status).toBe(0)
-    server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json(validUser)))
+    expect(state.error.status).toBe(status)
+    server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json(wireCurrentUser)))
     await act(() => state.retrySessionVerification())
     expect(result.current.state.status).toBe('authenticated')
     expect(result.current.state).not.toHaveProperty('error')
+    expect(tokenStorage.getSession()).toEqual(session)
   })
 
   it('renders the loading state, error, Retry and Sign in again through AppProviders', async () => {
@@ -132,6 +161,21 @@ describe('bootstrap and restore recovery', () => {
 })
 
 describe('login and logout', () => {
+  it.each(['INACTIVE', 'SUSPENDED', 'DEACTIVATED', 'missing-user', 'flat-response'])('does not persist a rejected login response: %s', async sample => {
+    const data = sample === 'flat-response' ? loginResponse()
+      : sample === 'missing-user' ? { ...wireLoginResponse(), user: undefined }
+        : { ...wireLoginResponse(), user: { ...wireIdentity, status: sample } }
+    server.use(http.post(identityApiUrl('/auth/login'), () => HttpResponse.json(data)))
+    const { result } = mountAuth()
+    await act(async () => {
+      await expect(result.current.login(credentials)).rejects.toBeInstanceOf(ApiError)
+    })
+    expect(result.current.state.status).toBe('anonymous')
+    expect(tokenStorage.getSession()).toBeNull()
+    expect(localStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
+    expect(sessionStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
+  })
+
   it('saves a remember-me login and clears it on logout', async () => {
     const rememberMe = true
     const response = loginResponse({ accessToken: validToken(3 * 86400), expiresIn: 3 * 86400 })
@@ -184,7 +228,7 @@ describe('login and logout', () => {
     server.use(
       http.get(identityApiUrl('/users/me'), ({ request }) => {
         headers.push(request.headers.get('authorization'))
-        return HttpResponse.json(validUser)
+        return HttpResponse.json(wireCurrentUser)
       }),
       http.get(lmsUrl, ({ request }) => {
         headers.push(request.headers.get('authorization'))

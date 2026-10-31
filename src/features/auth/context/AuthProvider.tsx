@@ -93,7 +93,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         purgeSession('expired')
         return
       }
-      const verifiedSession = {
+      // Keep the decoded profile in memory; session v2 persists identity only.
+      const verifiedSession: AuthSession = {
         ...session, userId: user.userId, email: user.email, fullName: user.fullName, status: user.status,
       }
       snapshot.current.session = verifiedSession

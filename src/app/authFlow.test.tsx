@@ -3,11 +3,14 @@ import userEvent from '@testing-library/user-event'
 import { ConfigProvider } from 'antd'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { AuthContext } from '@/features/auth/context/AuthContext'
 import { authApi } from '@/api/authApi'
-import { tokenStorage } from '@/features/auth/services/tokenStorage'
+import { AUTH_SESSION_KEY, tokenStorage } from '@/features/auth/services/tokenStorage'
 import AuthTestMotion from '@/test/AuthTestMotion'
 import { authSession, createToken, loginResponse, validUser } from '@/test/fixtures/auth'
+import { wireCurrentUser } from '@/test/fixtures/authWire'
+import { identityApiUrl, server } from '@/test/server'
 import { deferred, fillAuthFields } from '@/test/renderAuthPage'
 import type { LoginResponse } from '@/types/auth'
 import App from './App'
@@ -112,12 +115,12 @@ it('keeps the workspace usable when the session expiry exceeds the date display 
   expect(screen.getByText('Unavailable')).toBeInTheDocument()
 })
 
-it('returns home after login, shows the verified profile, and signs out to login', async () => {
+it.each([false, true])('registers, logs in, restores from wire identity and signs out (rememberMe=%s)', async rememberMe => {
   localStorage.clear()
   sessionStorage.clear()
   const user = userEvent.setup()
-  const router = createMemoryRouter(appRouter.routes, { initialEntries: ['/?view=mine#current'] })
-  const view = render(
+  let router = createMemoryRouter(appRouter.routes, { initialEntries: ['/?view=mine#current'] })
+  let view = render(
     <ConfigProvider theme={{ token: { motion: false } }}>
       <AppProviders><AuthTestMotion><RouterProvider router={router} /></AuthTestMotion></AppProviders>
     </ConfigProvider>,
@@ -127,11 +130,19 @@ it('returns home after login, shows the verified profile, and signs out to login
   expect(router.state.location.pathname).toBe('/login')
   expect(router.state.location.state.from).toMatchObject({ pathname: '/', search: '?view=mine', hash: '#current' })
 
-  await fillAuthFields(user, { Email: validUser.email, Password: 'password' })
+  await user.click(screen.getByRole('link', { name: 'Create account' }))
+  await screen.findByRole('heading', { name: 'Create Central Account' })
+  await fillAuthFields(user, { 'Full Name': validUser.fullName, Email: validUser.email, Password: 'password', 'Confirm Password': 'password' })
+  await user.click(screen.getByRole('button', { name: 'Create Account' }))
+  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
+  expect(tokenStorage.getSession()).toBeNull()
+  expect(screen.getByLabelText('Email')).toHaveValue(validUser.email)
+  await fillAuthFields(user, { Password: 'password' })
+  if (rememberMe) await user.click(screen.getByRole('checkbox', { name: 'Remember me' }))
   await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
   expect(await screen.findByRole('heading', { name: `Welcome, ${validUser.fullName}` })).toBeInTheDocument()
   expect(router.state.location).toMatchObject({ pathname: '/', search: '?view=mine', hash: '#current' })
-  const header = within(screen.getByRole('banner'))
+  let header = within(screen.getByRole('banner'))
   expect(header.getByRole('link', { name: 'G11 LMS home' })).toBeInTheDocument()
   expect(header.getByText(validUser.fullName)).toBeInTheDocument()
   expect(header.getByText(validUser.email)).toBeInTheDocument()
@@ -141,6 +152,32 @@ it('returns home after login, shows the verified profile, and signs out to login
   expect(main).toHaveTextContent('Platform status')
   expect(tokenStorage.getSession()).not.toBeNull()
   expect(within(main).getByRole('time')).toHaveAttribute('datetime', new Date(tokenStorage.getSession()!.expiresAt).toISOString())
+
+  const saved = tokenStorage.getSession()!
+  expect(saved).toMatchObject({ ...validUser, version: 2, rememberMe, tokenType: 'Bearer' })
+  expect(Object.keys(saved).sort()).toEqual([
+    'sessionId', 'accessToken', 'tokenType', 'userId', 'email', 'fullName', 'status', 'expiresAt', 'rememberMe', 'version',
+  ].sort())
+  expect((rememberMe ? localStorage : sessionStorage).getItem(AUTH_SESSION_KEY)).not.toBeNull()
+  expect((rememberMe ? sessionStorage : localStorage).getItem(AUTH_SESSION_KEY)).toBeNull()
+  server.use(http.get(identityApiUrl('/users/me'), ({ request }) => {
+    expect(request.headers.get('authorization')).toBe(`Bearer ${saved.accessToken}`)
+    return HttpResponse.json({ ...wireCurrentUser, full_name: 'Verified Student', role: 'ADMINISTRATOR' })
+  }))
+  view.unmount()
+  router.dispose()
+  router = createMemoryRouter(appRouter.routes, { initialEntries: ['/?view=mine#current'] })
+  view = render(
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <AppProviders><AuthTestMotion><RouterProvider router={router} /></AuthTestMotion></AppProviders>
+    </ConfigProvider>,
+  )
+  await screen.findByRole('heading', { name: 'Welcome, Verified Student' })
+  header = within(screen.getByRole('banner'))
+  expect(header.getByText('Verified Student')).toBeInTheDocument()
+  expect(screen.queryByText('ADMINISTRATOR')).not.toBeInTheDocument()
+  expect(tokenStorage.getSession()).toEqual(saved)
+  expect(router.state.location).toMatchObject({ pathname: '/', search: '?view=mine', hash: '#current' })
 
   await user.tab()
   expect(header.getByRole('link', { name: 'G11 LMS home' })).toHaveFocus()

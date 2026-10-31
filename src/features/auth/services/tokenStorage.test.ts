@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthSession } from '@/types/auth'
 import { authSession, createToken, expiredToken, validToken } from '@/test/fixtures/auth'
+import { wireCurrentUser, wireLoginResponse } from '@/test/fixtures/authWire'
 import { MAX_REMEMBER_ME_DURATION } from '@/utils/sessionExpiry'
 import { AUTH_SESSION_KEY, clearSession, getSession, saveSession } from './tokenStorage'
 
@@ -128,7 +129,9 @@ describe('tokenStorage', () => {
 
   it("validates session schema, user status and storage placement independently", () => {
     for (const sample of [
-      null, [], {}, { ...authSession(), version: 1 }, { ...authSession(), version: '2' },
+      null, [], {}, wireCurrentUser, wireLoginResponse(),
+      { ...wireLoginResponse(), sessionId: 'wire-session', version: 2, rememberMe: false, expiresAt: now + 3600_000 },
+      { ...authSession(), version: 1 }, { ...authSession(), version: '2' },
       { ...authSession(), sessionId: undefined }, { ...authSession(), sessionId: '' },
       { ...authSession(), accessToken: 'broken' }, { ...authSession(), tokenType: 'Basic' },
       { ...authSession(), expiresAt: 'tomorrow' }, { ...authSession(), expiresAt: null },
@@ -157,9 +160,10 @@ describe('tokenStorage', () => {
     expect(getSession()).toBeNull()
 
     {
-      const session = { ...authSession(), password: 'must-not-be-stored' }
+      const session = { ...authSession(), password: 'must-not-be-stored', role: 'ADMINISTRATOR', profile: { bio: 'Private profile' }, user: wireCurrentUser, clientId: 'central-identity' }
       expect(saveSession(session)).toBe(true)
-      expect(JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY)!)).not.toHaveProperty('password')
+      const stored = JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY)!)
+      for (const field of ['password', 'role', 'profile', 'user', 'clientId']) expect(stored).not.toHaveProperty(field)
     }
 
     expect(saveSession(null as unknown as AuthSession)).toBe(false)

@@ -8,6 +8,7 @@ import { HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { authApi } from '@/api/authApi'
 import { registeredUser } from '@/test/fixtures/auth'
+import { wireRegisteredUser } from '@/test/fixtures/authWire'
 import { deferred, fillAuthFields, renderAuthPage, setAuthFields } from '@/test/renderAuthPage'
 import { identityApiUrl, server } from '@/test/server'
 import type { RegisterResponse } from '@/types/auth'
@@ -24,7 +25,7 @@ describe('RegisterPage', () => {
     const received = vi.fn()
     server.use(http.post(identityApiUrl('/auth/register'), async ({ request }) => {
       received(await request.json())
-      return HttpResponse.json(registeredUser, { status: 201 })
+      return HttpResponse.json(wireRegisteredUser, { status: 201 })
     }))
     const { user, router } = renderAuthPage('/login', { from: { pathname: '/courses', search: '?page=2', hash: '#week1' } }, { integration: true })
     await user.click(screen.getByRole('link', { name: 'Create account' }))
@@ -45,7 +46,7 @@ describe('RegisterPage', () => {
     await fillAuthFields(user, { ...fields, Password: ' pass   ', 'Confirm Password': ' pass   ' })
     await user.click(screen.getByRole('button', { name: 'Create Account' }))
     await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
-    expect(received).toHaveBeenCalledExactlyOnceWith({ fullName: 'Nguyễn Thị Ánh', email: 'student@example.com', password: ' pass   ' })
+    expect(received).toHaveBeenCalledExactlyOnceWith({ full_name: 'Nguyễn Thị Ánh', email: 'student@example.com', password: ' pass   ' })
     expect(tokenStorage.getSession()).toBeNull()
     expect(router.state.historyAction).toBe('REPLACE')
     expect(screen.getByLabelText('Email')).toHaveValue('student@example.com')
@@ -184,16 +185,20 @@ describe('RegisterPage', () => {
     setAuthFields(fields)
     for (let attempt = 0; attempt < 2; attempt += 1) {
       await user.click(screen.getByRole('button', { name: 'Create Account' }))
-      await waitFor(() => expect(status === 409 ? screen.getByLabelText('Email') : screen.getByRole('alert')).toHaveFocus())
-      expect(screen.queryByText(/SQL query|Private SQL|private-token/)).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Create Account' })).toBeEnabled()
-      if (status === 409) expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('An account with this email already exists.')
-      if (status === 500) {
+      if (status === 409) {
+        await waitFor(() => {
+          expect(screen.getByLabelText('Email')).toHaveFocus()
+          expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('An account with this email already exists.')
+        })
+      } else {
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus())
         expect(screen.getByRole('alert')).toHaveTextContent('The registration service is temporarily unavailable. Please try again later.')
         await user.tab()
         expect(screen.getByLabelText('Full Name')).toHaveFocus()
         await user.keyboard('a')
       }
+      expect(screen.queryByText(/SQL query|Private SQL|private-token/)).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Create Account' })).toBeEnabled()
     }
   })
 

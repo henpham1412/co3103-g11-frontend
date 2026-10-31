@@ -88,13 +88,32 @@ On Windows, use `npm.cmd` if PowerShell blocks the `npm.ps1` launcher.
 
 ## Authentication Foundation
 
-`src/types/auth.ts` defines the DOC-05 request/response and session contracts.
+`src/types/authWire.ts` defines the DOC-05 HTTP contracts; `src/types/auth.ts`
+defines camelCase form, user, and session models. `src/api/authMapping.ts`
+serializes requests and validates unknown responses before mapping them:
+
+- Registration sends `{ email, password, full_name }` and reads
+  `{ user_id, email, full_name, status, message? }`. No creation timestamp is
+  required or generated. The UI uses a local success message.
+- Login reads `{ access_token, token_type, expires_in, user, client_id? }`, with
+  identity nested under `user`, then returns a flat camelCase internal model.
+  Login currently sends only email/password; LMS client context is separate work.
+- `/users/me` reads `{ user_id, email, full_name, status, profile? }`. Profile may
+  be omitted, null, empty, or contain the documented optional fields. Profile
+  keys are mapped explicitly and kept in memory, outside persisted sessions.
+
+Global account statuses are `ACTIVE`, `SUSPENDED`, and `DEACTIVATED`.
+Legacy camelCase HTTP identity/token fields and `INACTIVE` are rejected.
+Undeclared fields, including global `role`, do not enter auth models or sessions;
+LMS authorization remains the responsibility of each LMS.
+
 `authApi` provides `register`, `login`, and `getCurrentUser`, all accepting an
 optional `AbortSignal`. Only API fields are sent: `confirmPassword` and
 `rememberMe` stay on the client. An explicit token on `getCurrentUser` is scoped
 to that request. Response data is validated before use; login and current-user
-responses must represent an `ACTIVE` account. `ApiError` preserves DOC-05 fields,
-including validation errors, business codes, and account lock deadlines.
+responses must represent an `ACTIVE` account. `ApiError` preserves business codes
+and supports the backend's `validationErrors`, `errors`, and `lockedUntil`
+extensions. DOC-05's optional `details` adapter is separate work.
 Transport failures have status `0`; malformed success bodies have status `502`
 and code `INVALID_AUTH_RESPONSE`.
 
@@ -152,8 +171,8 @@ fields are trimmed and email is lowercased on submission. Passwords are never
 trimmed or normalized: registration requires JavaScript length >= 8 and both
 forms require nonblank passwords and enforce <= 72 UTF-8 bytes. Login intentionally
 accepts shorter passwords. The password checklist mirrors these rules; full names
-reject all Unicode control characters. Both forms map HTTP 400 DOC-05
-`validationErrors` and RFC 7807 `errors: [{ field, message }]` into the form and
+reject all Unicode control characters. Both forms map supported HTTP 400
+`validationErrors` and `errors: [{ field, message }]` extensions into the form and
 focus the first invalid field. Known validation messages use local translations;
 unknown field diagnostics and unbound errors use safe local fallback copy.
 Registration conflicts bind to email. HTTP 401 login failures always use generic
@@ -171,9 +190,18 @@ Vitest uses jsdom and the `@/` alias for `src/`. The setup in `src/test/setup.ts
 loads jest-dom matchers, cleans up React renders, and starts/resets/stops the MSW
 server. Unhandled requests fail tests even when application code catches the
 network failure (the setup self-test explicitly accounts for its deliberate
-unmatched request). Default handlers and synthetic auth
-fixtures live in `src/test/server.ts` and `src/test/fixtures/auth.ts`; override
+unmatched request). Default handlers live in `src/test/server.ts`; independent
+snake_case HTTP fixtures live in `src/test/fixtures/authWire.ts`. CamelCase
+fixtures in `src/test/fixtures/auth.ts` are for internal API mocks and storage. Override
 handlers in individual tests with `server.use(...)`. No live backend is required.
+
+Contract regressions cover registration without timestamps, nested login,
+optional profiles, malformed/legacy responses, and registration → login →
+provider remount/restore → logout in both persistence modes. These are MSW tests,
+not evidence of live backend compatibility. Central Identity must implement the
+DOC-05 `/users/me` response before live restoration can work; the legacy
+`{ id, fullName, role, ... }` response is deliberately unsupported. The backend
+DTO/profile change belongs in its own repository.
 
 For production browser verification, run `npm run build`, then
 `npm run preview -- --host 127.0.0.1 --port 4179`. With the configured backend

@@ -1,4 +1,4 @@
-export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'DEACTIVATED'
+export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'
 
 export type LmsRole = 'ADMINISTRATOR' | 'TUTOR' | 'STUDENT'
 
@@ -8,35 +8,38 @@ export interface RegisterRequest {
   fullName: string
 }
 
-export interface RegisterResponse {
+export interface AuthUser {
   userId: string
   email: string
   fullName: string
   status: UserStatus
-  createdAt: string
 }
+
+export type RegisterResponse = AuthUser
 
 export interface LoginRequest {
   email: string
   password: string
 }
 
-export interface LoginResponse {
+export interface LoginResponse extends AuthUser {
   accessToken: string
-  tokenType: string
+  tokenType: 'Bearer'
   expiresIn: number
-  userId: string
-  email: string
-  fullName: string
-  status: UserStatus
+  clientId?: string
 }
 
-export interface CurrentUserResponse {
-  userId: string
-  email: string
-  fullName: string
-  status: UserStatus
-  role?: string
+export interface UserProfile {
+  avatarUrl?: string | null
+  bio?: string | null
+  phoneNumber?: string | null
+  dateOfBirth?: string | null
+  locale?: string | null
+  timezone?: string | null
+}
+
+export interface CurrentUserResponse extends AuthUser {
+  profile?: UserProfile | null
 }
 
 export type LoginCredentials = LoginRequest
