@@ -35,6 +35,48 @@ describe('normalizeApiError', () => {
     })).lockedUntil).toBe('2026-11-01T12:30:00Z')
   })
 
+  it('normalizes the literal CI-2 validation_errors payload without requiring details', () => {
+    const result = normalizeApiError(responseError(400, {
+      validation_errors: { full_name: 'Full name is required' },
+    }, '/auth/register'))
+    expect(result.validationErrors).toEqual({ fullName: 'Full name is required' })
+    expect(result.details).toBeUndefined()
+  })
+
+  it.each([
+    undefined, null, [], ['Full name is required'], 42, 'invalid', {},
+    { full_name: null }, { full_name: ['invalid'] }, { full_name: '' }, { full_name: ' ' },
+  ].map(validation_errors => ({ validation_errors })))('tolerates absent or malformed validation_errors: $validation_errors', ({ validation_errors }) => {
+    const result = normalizeApiError(responseError(400, { validation_errors }))
+    expect(result.validationErrors).toBeUndefined()
+    expect(normalizeApiError(responseError(400, {
+      validation_errors, validationErrors: { email: 'Invalid email format' },
+    })).validationErrors).toEqual({ email: 'Invalid email format' })
+  })
+
+  it.each(['validation_errors', 'validationErrors'])('normalizes %s keys and retains only non-empty string messages', key => {
+    expect(normalizeApiError(responseError(400, {
+      [key]: {
+        full_name: 'Full name is required', email: 'Invalid email format', password: 'Password is required',
+        confirm_password: 'Passwords do not match', empty: '', blank: ' ', missing: null,
+        number: 42, boolean: false, array: ['invalid'], object: { message: 'invalid' },
+      },
+    })).validationErrors).toEqual({
+      fullName: 'Full name is required', email: 'Invalid email format', password: 'Password is required',
+      confirmPassword: 'Passwords do not match',
+    })
+  })
+
+  it('merges validation maps with valid CI-2 entries taking precedence after key normalization', () => {
+    expect(normalizeApiError(responseError(400, {
+      validationErrors: { fullName: 'Legacy name error', email: 'Invalid email format', password: 'Password is required' },
+      validation_errors: { full_name: 'Full name is required', email: null, confirm_password: 'Passwords do not match' },
+    })).validationErrors).toEqual({
+      fullName: 'Full name is required', email: 'Invalid email format', password: 'Password is required',
+      confirmPassword: 'Passwords do not match',
+    })
+  })
+
   it("keeps valid validation siblings and rejects malformed maps and arrays", () => {
     expect(normalizeApiError(responseError(400, {
       validationErrors: {

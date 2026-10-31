@@ -21,6 +21,46 @@ const fields = {
 }
 
 describe('RegisterPage', () => {
+  it('binds the literal CI-2 validation_errors payload to fullName and focuses the field', async () => {
+    server.use(http.post(identityApiUrl('/auth/register'), () => HttpResponse.json({
+      validation_errors: { full_name: 'Full name is required' },
+    }, { status: 400 })))
+    const { user } = renderAuthPage('/register')
+    setAuthFields(fields)
+    await user.click(screen.getByRole('button', { name: 'Create Account' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Full Name')).toHaveFocus()
+      expect(screen.getByLabelText('Full Name')).toHaveAttribute('aria-invalid', 'true')
+      expect(screen.getByLabelText('Full Name')).toHaveAccessibleDescription('Please enter your full name.')
+    })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps unrecognized CI-2 validation messages safe while focusing the field', async () => {
+    server.use(http.post(identityApiUrl('/auth/register'), () => HttpResponse.json({
+      validation_errors: { full_name: 'SQL query contains private data' },
+    }, { status: 400 })))
+    const { user } = renderAuthPage('/register')
+    setAuthFields(fields)
+    await user.click(screen.getByRole('button', { name: 'Create Account' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Full Name')).toHaveFocus()
+      expect(screen.getByLabelText('Full Name')).toHaveAccessibleDescription('Please check your full name.')
+    })
+    expect(screen.queryByText(/SQL query|private data/)).not.toBeInTheDocument()
+  })
+
+  it.each([undefined, null, [], 42, {}].map(validation_errors => ({ validation_errors })))('handles absent or malformed CI-2 validation_errors: $validation_errors', async ({ validation_errors }) => {
+    server.use(http.post(identityApiUrl('/auth/register'), () => HttpResponse.json({ validation_errors }, { status: 400 })))
+    const { user } = renderAuthPage('/register')
+    setAuthFields(fields)
+    await user.click(screen.getByRole('button', { name: 'Create Account' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus())
+    expect(screen.getByRole('alert')).toHaveTextContent('Unable to create your account. Please check your details and try again.')
+    for (const label of Object.keys(fields)) expect(screen.getByLabelText(label, { exact: true })).not.toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: 'Create Account' })).toBeEnabled()
+  })
+
   it('maps canonical details to controls and keeps malformed or unbound diagnostics safe', async () => {
     server.use(http.post(identityApiUrl('/auth/register'), () => HttpResponse.json({
       details: [null, 'invalid', { field: 'email' },

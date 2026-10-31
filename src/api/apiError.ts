@@ -60,9 +60,11 @@ export function normalizeApiError(error: unknown, endpoint?: string): ApiError {
     const invalidCredentials = status === 401 && pathname.endsWith('/auth/login')
     const [fallbackError, fallbackMessage] = fallbackErrors[status]
       ?? ['Request Failed', 'The request failed. Please try again later.']
-    const validationEntries = isRecord(data.validationErrors)
-      ? Object.entries(data.validationErrors).filter((entry): entry is [string, string] => isNonEmptyString(entry[1]))
-      : []
+    // Valid CI-2 entries take precedence over the legacy camelCase map.
+    const validationEntries = [data.validationErrors, data.validation_errors]
+      .flatMap(value => isRecord(value) ? Object.entries(value) : [])
+      .filter((entry): entry is [string, string] => isNonEmptyString(entry[1]))
+      .map(([field, message]) => [field.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()), message])
     const validationErrors = validationEntries.length ? Object.fromEntries(validationEntries) : undefined
 
     return new ApiError({
