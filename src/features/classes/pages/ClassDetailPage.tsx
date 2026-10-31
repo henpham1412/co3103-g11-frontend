@@ -1,20 +1,347 @@
-import { Avatar, Button, Card, Collapse, Descriptions, Empty, Progress, Tabs, Tag, Typography } from "antd";
-import { ArrowLeftOutlined, CalendarOutlined, CheckCircleOutlined, TeamOutlined } from "@ant-design/icons";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Avatar,
+  Button,
+  Card,
+  Collapse,
+  Descriptions,
+  Empty,
+  message,
+  Popconfirm,
+  Spin,
+  Tabs,
+  Tag,
+  Typography,
+} from "antd";
+import { ArrowLeftOutlined, CheckCircleOutlined, TeamOutlined } from "@ant-design/icons";
+import { isAxiosError } from "axios";
 import { Link, useParams } from "react-router-dom";
+
 import StudentWorkspaceLayout from "../../../components/layout/StudentWorkspaceLayout";
-import { mockClassDetails } from "../data/mockClassDetails";
-import { sampleClasses } from "../data/mockClasses";
+import {
+  getClassDetails,
+  getClassOutline,
+  getCurrentMemberships,
+  joinClass,
+  leaveClass,
+  withdrawJoinRequest,
+} from "../api/classApi";
+import type { ClassCatalogItem, ClassOutlineResponse, MembershipStatus } from "../types";
 import "../class-detail.css";
 
+interface ClassDetailResult {
+  classId: string;
+  data?: ClassCatalogItem;
+  error?: string;
+}
+
+interface ClassOutlineResult {
+  requestKey: string;
+  data?: ClassOutlineResponse;
+  error?: string;
+  membershipRequired?: boolean;
+}
+
 export default function ClassDetailPage() {
-  const { classId } = useParams();
-  const classItem = sampleClasses.find((item) => item.class_id === classId);
-  const detail = classId ? mockClassDetails[classId] : undefined;
+  const { classId = "" } = useParams();
+  const [detailResult, setDetailResult] = useState<ClassDetailResult | null>(null);
+  const [outlineResult, setOutlineResult] = useState<ClassOutlineResult | null>(null);
+  const [outlineVersion, setOutlineVersion] = useState(0);
+  const [membershipStatus, setMembershipStatus] = useState<MembershipStatus | null>(null);
+  const [joining, setJoining] = useState(false);
 
-  if (!classItem) return <StudentWorkspaceLayout currentPage="Class Catalog > Class Detail"><main className="class-detail-page"><Link to="/classes">Back to Class Catalog</Link><Empty className="class-detail__empty" description="Class not found in the sample data" /></main></StudentWorkspaceLayout>;
+  const detailLoading = detailResult?.classId !== classId;
+  const classItem = detailLoading ? undefined : detailResult?.data;
+  const detailError = detailLoading ? undefined : detailResult?.error;
+  const outlineRequestKey = `${classId}:${outlineVersion}`;
+  const outlineLoading = Boolean(classItem) && outlineResult?.requestKey !== outlineRequestKey;
+  const outline = outlineLoading ? undefined : outlineResult?.data;
+  const outlineError = outlineLoading ? undefined : outlineResult?.error;
+  const membershipRequired = !outlineLoading && outlineResult?.membershipRequired === true;
 
-  const progress = detail ? Math.round((detail.completedLessons / detail.totalLessons) * 100) : 0;
-  const syllabus = detail ? <div className="class-detail__syllabus-layout"><section><div className="class-detail__section-heading"><Typography.Title level={4}>Class syllabus</Typography.Title><Typography.Text type="secondary">{detail.chapters.length} chapters · {detail.estimatedLearningTime}</Typography.Text></div><Collapse items={detail.chapters.map((chapter, index) => ({ key: chapter.title, label: <div className="class-detail__chapter-label"><div><strong>Chapter {index + 1} · {chapter.title}</strong><small>{chapter.completedLessons} of {chapter.totalLessons} lessons completed</small></div>{index === detail.chapters.length - 1 && <Tag color="blue">In progress</Tag>}</div>, children: chapter.lessons.length ? chapter.lessons.map((lesson) => <div className="class-detail__lesson" key={lesson.title}><span className={lesson.completed ? "class-detail__lesson-check is-complete" : "class-detail__lesson-check"}>{lesson.completed && <CheckCircleOutlined />}</span><span>{lesson.title}</span><Tag bordered={false}>{lesson.durationMinutes} mins</Tag></div>) : <Typography.Text type="secondary">Lesson list is not included in the current sample.</Typography.Text> }))} /></section><aside className="class-detail__side-panels"><Card title="What you’ll learn">{detail.learningOutcomes.map((outcome) => <p className="class-detail__outcome" key={outcome}><CheckCircleOutlined /> {outcome}</p>)}</Card><Card title="Class information"><Typography.Text className="class-detail__label">PREREQUISITES</Typography.Text><Typography.Paragraph>{classItem.prerequisites_description || "None provided"}</Typography.Paragraph><Typography.Text type="secondary">Prerequisites are informational and do not block enrollment.</Typography.Text><p className="class-detail__approved"><CheckCircleOutlined /> Enrollment approved · {detail.enrollmentApprovedAt}</p></Card><Typography.Text className="class-detail__note">Only completed lessons count toward progress. Opening a lesson does not mark it complete.</Typography.Text></aside></div> : <Empty description="Syllabus preview is not available for this sample class." />;
+  useEffect(() => {
+    if (!classId) return;
+    const controller = new AbortController();
 
-  return <StudentWorkspaceLayout currentPage="Class Catalog > Class Detail"><main className="class-detail-page"><Link className="class-detail__back" to="/classes"><ArrowLeftOutlined /> Back to Class Catalog</Link><Card className="class-detail__hero"><div className="class-detail__hero-top"><div><div className="class-detail__badges"><Typography.Text type="secondary">{classItem.class_code}</Typography.Text><Tag color={classItem.enrollment_policy === "OPEN" ? "green" : "orange"}>{classItem.enrollment_policy}</Tag></div><Typography.Title level={2}>{classItem.title}</Typography.Title><Typography.Paragraph type="secondary">{classItem.description || "No class description is available."}</Typography.Paragraph><div className="class-detail__quick-facts"><span><CalendarOutlined /> {detail?.schedule || "Schedule not provided"}</span><span><TeamOutlined /> {classItem.active_member_count}/{classItem.max_capacity ?? "—"} Seats</span></div>{detail && <Typography.Text className="class-detail__term" type="secondary">{detail.term} · {detail.chapters.length} chapters · {detail.totalLessons} lessons</Typography.Text>}</div><div className="class-detail__progress-wrap"><Tag color="green">Enrolled</Tag>{detail ? <Card size="small" className="class-detail__progress-card"><div className="class-detail__progress-heading"><strong>Your progress</strong><strong>{progress}%</strong></div><Progress percent={progress} showInfo={false} /><Typography.Text type="secondary">{detail.completedLessons} of {detail.totalLessons} lessons completed</Typography.Text><Button type="primary" block onClick={() => window.alert("Lesson viewer is not connected yet.")}>Go to Active Lesson</Button><Typography.Text type="secondary">Continue: {detail.activeLesson}</Typography.Text></Card> : <Card size="small">You are viewing class details.</Card>}</div></div><div className="class-detail__tutor"><Avatar>{detail?.tutorInitials || classItem.tutor.full_name.slice(0, 1)}</Avatar><div><Typography.Text strong>{classItem.tutor.full_name} · {detail?.tutorRole || "Tutor"}</Typography.Text><br /><Typography.Text type="secondary">{detail?.tutorBio || "Class tutor"}</Typography.Text></div></div></Card><Tabs className="class-detail__tabs" items={[{ key: "syllabus", label: "Syllabus", children: syllabus }, { key: "information", label: "Class information", children: <Card><Descriptions column={{ xs: 1, sm: 2 }}><Descriptions.Item label="Class code">{classItem.class_code}</Descriptions.Item><Descriptions.Item label="Enrollment policy">{classItem.enrollment_policy}</Descriptions.Item><Descriptions.Item label="Prerequisites" span={2}>{classItem.prerequisites_description || "None provided"}</Descriptions.Item></Descriptions></Card> }, { key: "announcements", label: "Announcements", children: <Empty description="No announcements are available in this preview." /> }]} /></main></StudentWorkspaceLayout>;
+    getClassDetails(classId, controller.signal)
+      .then((data) => setDetailResult({ classId, data }))
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setDetailResult({ classId, error: getErrorMessage(error) });
+        }
+      });
+
+    return () => controller.abort();
+  }, [classId]);
+
+  useEffect(() => {
+    if (!classItem) return;
+    const controller = new AbortController();
+
+    getClassOutline(classId, controller.signal)
+      .then((data) => {
+        setOutlineResult({ requestKey: outlineRequestKey, data });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        const code = getErrorCode(error);
+        setOutlineResult({
+          requestKey: outlineRequestKey,
+          error: code === "MEMBERSHIP_REQUIRED" ? undefined : getErrorMessage(error),
+          membershipRequired: code === "MEMBERSHIP_REQUIRED",
+        });
+      });
+
+    return () => controller.abort();
+  }, [classId, classItem, outlineRequestKey]);
+
+  useEffect(() => {
+    if (!classId) return;
+    const controller = new AbortController();
+
+    getCurrentMemberships(controller.signal)
+      .then((memberships) => {
+        const membership = memberships.find((item) => item.class_id === classId);
+        setMembershipStatus(membership?.status === "ACTIVE" || membership?.status === "PENDING"
+          ? membership.status
+          : null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setMembershipStatus(null);
+      });
+
+    return () => controller.abort();
+  }, [classId]);
+
+  async function handleJoin() {
+    if (!classItem) return;
+    setJoining(true);
+    try {
+      const result = await joinClass(classItem.class_id, classItem.enrollment_policy);
+      setMembershipStatus(result.status);
+      if (result.status === "ACTIVE") {
+        message.success("You joined the class.");
+        setOutlineVersion((version) => version + 1);
+      } else {
+        message.success("Your request to join was submitted.");
+      }
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  async function handleMembershipEnd() {
+    if (!classItem || !membershipStatus) return;
+    setJoining(true);
+    try {
+      if (membershipStatus === "ACTIVE") {
+        await leaveClass(classItem.class_id);
+        message.success("You left the class.");
+        setOutlineVersion((version) => version + 1);
+      } else {
+        await withdrawJoinRequest(classItem.class_id);
+        message.success("Your join request was withdrawn.");
+      }
+      setMembershipStatus(null);
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  const currentPage = "Class Catalog > Class Detail";
+  const syllabusContent = outlineLoading ? (
+    <div className="class-detail__loading" role="status" aria-live="polite">
+      <Spin />
+      <span>Loading syllabus…</span>
+    </div>
+  ) : membershipRequired ? (
+    <Alert
+      type="info"
+      showIcon
+      message="The syllabus is available to active class members."
+      description={
+        membershipStatus === "PENDING"
+          ? "Your request is waiting for tutor approval."
+          : "Join this class to view its published learning outline."
+      }
+      action={
+        membershipStatus === "PENDING" ? (
+          <Popconfirm
+            title="Withdraw your join request?"
+            okText="Withdraw request"
+            cancelText="Keep"
+            onConfirm={handleMembershipEnd}
+          >
+            <Button loading={joining}>Withdraw request</Button>
+          </Popconfirm>
+        ) : (
+          <Button
+            type="primary"
+            loading={joining}
+            disabled={classItem?.enrollment_policy === "OPEN"
+              && classItem.max_capacity !== null
+              && classItem.active_member_count >= classItem.max_capacity}
+            onClick={handleJoin}
+          >
+            {classItem?.enrollment_policy === "OPEN" ? "Join Class" : "Request to Join"}
+          </Button>
+        )
+      }
+    />
+  ) : outlineError ? (
+    <Alert type="warning" showIcon message="The syllabus could not be loaded" description={outlineError} />
+  ) : outline && outline.chapters.length > 0 ? (
+    <>
+      <div className="class-detail__section-heading">
+        <Typography.Title level={4}>Class syllabus</Typography.Title>
+        <Typography.Text type="secondary">
+          {outline.chapters.length} chapters · {outline.chapters.reduce((total, chapter) => total + chapter.lessons.length, 0)} lessons
+        </Typography.Text>
+      </div>
+      <Collapse
+        items={outline.chapters.map((chapter) => ({
+          key: chapter.chapter_id,
+          label: <strong>Chapter {chapter.sequence_order + 1} · {chapter.title}</strong>,
+          children: chapter.lessons.length > 0 ? (
+            chapter.lessons.map((lesson) => (
+              <div className="class-detail__lesson" key={lesson.lesson_id}>
+                <span className="class-detail__lesson-check"><CheckCircleOutlined /></span>
+                <span>{lesson.title}</span>
+                {lesson.estimated_duration != null && (
+                  <Tag bordered={false}>{lesson.estimated_duration} mins</Tag>
+                )}
+              </div>
+            ))
+          ) : (
+            <Typography.Text type="secondary">No published lessons yet.</Typography.Text>
+          ),
+        }))}
+      />
+    </>
+  ) : (
+    <Empty description="No published syllabus is available yet." />
+  );
+
+  return (
+    <StudentWorkspaceLayout currentPage={currentPage}>
+      <main className="class-detail-page">
+        <Link className="class-detail__back" to="/classes">
+          <ArrowLeftOutlined /> Back to Class Catalog
+        </Link>
+
+        {detailLoading ? (
+          <div className="class-detail__loading" role="status" aria-live="polite">
+            <Spin />
+            <span>Loading class details…</span>
+          </div>
+        ) : detailError || !classItem ? (
+          <Alert type="error" showIcon message="Could not load this class" description={detailError ?? "Class not found."} />
+        ) : (
+          <>
+            <Card className="class-detail__hero">
+              <div className="class-detail__hero-top">
+                <div>
+                  <div className="class-detail__badges">
+                    <Typography.Text type="secondary">{classItem.class_code}</Typography.Text>
+                    <Tag color={classItem.enrollment_policy === "OPEN" ? "green" : "orange"}>
+                      {classItem.enrollment_policy}
+                    </Tag>
+                    <Tag>{classItem.status}</Tag>
+                  </div>
+                  <Typography.Title level={2}>{classItem.title}</Typography.Title>
+                  <Typography.Paragraph type="secondary">
+                    {classItem.description || "No class description is available."}
+                  </Typography.Paragraph>
+                  <div className="class-detail__quick-facts">
+                    <span>
+                      <TeamOutlined /> {classItem.active_member_count}/
+                      {classItem.max_capacity ?? "—"} Seats
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="class-detail__tutor">
+                <Avatar>{classItem.tutor.full_name.slice(0, 1)}</Avatar>
+                <div>
+                  <Typography.Text strong>{classItem.tutor.full_name}</Typography.Text>
+                  <br />
+                  <Typography.Text type="secondary">Tutor</Typography.Text>
+                </div>
+              </div>
+            </Card>
+
+            {membershipStatus === "ACTIVE" && (
+              <div className="class-detail__membership-status">
+                <Tag color="green">Enrolled</Tag>
+                <Popconfirm
+                  title="Leave this class?"
+                  description="You will lose access to this class's learning content."
+                  okText="Leave class"
+                  cancelText="Keep"
+                  onConfirm={handleMembershipEnd}
+                >
+                  <Button size="small" loading={joining}>Leave class</Button>
+                </Popconfirm>
+              </div>
+            )}
+            {membershipStatus === "PENDING" && (
+              <div className="class-detail__membership-status">
+                <Tag color="orange">Request pending</Tag>
+              </div>
+            )}
+
+            <Tabs
+              className="class-detail__tabs"
+              items={[
+                { key: "syllabus", label: "Syllabus", children: syllabusContent },
+                {
+                  key: "information",
+                  label: "Class information",
+                  children: (
+                    <Card>
+                      <Descriptions column={{ xs: 1, sm: 2 }}>
+                        <Descriptions.Item label="Class code">{classItem.class_code}</Descriptions.Item>
+                        <Descriptions.Item label="Enrollment policy">{classItem.enrollment_policy}</Descriptions.Item>
+                        <Descriptions.Item label="Prerequisites" span={2}>
+                          {classItem.prerequisites_description || "None provided"}
+                        </Descriptions.Item>
+                      </Descriptions>
+                      <Typography.Text type="secondary">
+                        Prerequisites are informational and do not block enrollment.
+                      </Typography.Text>
+                    </Card>
+                  ),
+                },
+                {
+                  key: "announcements",
+                  label: "Announcements",
+                  children: <Empty description="Announcements are not part of this FE-3 implementation." />,
+                },
+              ]}
+            />
+          </>
+        )}
+      </main>
+    </StudentWorkspaceLayout>
+  );
+}
+
+function getErrorCode(error: unknown) {
+  if (!isAxiosError<{ code?: string; error?: string }>(error)) return undefined;
+  return error.response?.data?.code ?? error.response?.data?.error;
+}
+
+function getErrorMessage(error: unknown) {
+  if (isAxiosError<{ code?: string; error?: string; message?: string }>(error)) {
+    return error.response?.data?.message
+      ?? error.response?.data?.code
+      ?? error.response?.data?.error
+      ?? error.message;
+  }
+  return error instanceof Error ? error.message : "An unexpected error occurred.";
 }
