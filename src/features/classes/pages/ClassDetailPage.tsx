@@ -48,7 +48,11 @@ export default function ClassDetailPage() {
   const [detailResult, setDetailResult] = useState<ClassDetailResult | null>(null);
   const [outlineResult, setOutlineResult] = useState<ClassOutlineResult | null>(null);
   const [outlineVersion, setOutlineVersion] = useState(0);
-  const [membershipStatus, setMembershipStatus] = useState<MembershipStatus | null>(null);
+  const [membershipResult, setMembershipResult] = useState<{
+    classId: string;
+    status?: MembershipStatus;
+    error?: string;
+  } | null>(null);
   const [joining, setJoining] = useState(false);
 
   const detailLoading = detailResult?.classId !== classId;
@@ -59,6 +63,9 @@ export default function ClassDetailPage() {
   const outline = outlineLoading ? undefined : outlineResult?.data;
   const outlineError = outlineLoading ? undefined : outlineResult?.error;
   const membershipRequired = !outlineLoading && outlineResult?.membershipRequired === true;
+  const membershipStatusAvailable = membershipResult?.classId === classId && !membershipResult.error;
+  const membershipStatus = membershipStatusAvailable ? membershipResult?.status ?? null : null;
+  const membershipStatusError = membershipResult?.classId === classId ? membershipResult.error : undefined;
 
   useEffect(() => {
     if (!classId) return;
@@ -103,12 +110,17 @@ export default function ClassDetailPage() {
     getCurrentMemberships(controller.signal)
       .then((memberships) => {
         const membership = memberships.find((item) => item.class_id === classId);
-        setMembershipStatus(membership?.status === "ACTIVE" || membership?.status === "PENDING"
-          ? membership.status
-          : null);
+        setMembershipResult({
+          classId,
+          status: membership?.status === "ACTIVE" || membership?.status === "PENDING"
+            ? membership.status
+            : undefined,
+        });
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setMembershipStatus(null);
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setMembershipResult({ classId, error: getErrorMessage(error) });
+        }
       });
 
     return () => controller.abort();
@@ -119,7 +131,7 @@ export default function ClassDetailPage() {
     setJoining(true);
     try {
       const result = await joinClass(classItem.class_id, classItem.enrollment_policy);
-      setMembershipStatus(result.status);
+      setMembershipResult({ classId: classItem.class_id, status: result.status });
       if (result.status === "ACTIVE") {
         message.success("You joined the class.");
         setOutlineVersion((version) => version + 1);
@@ -145,7 +157,7 @@ export default function ClassDetailPage() {
         await withdrawJoinRequest(classItem.class_id);
         message.success("Your join request was withdrawn.");
       }
-      setMembershipStatus(null);
+      setMembershipResult({ classId: classItem.class_id });
     } catch (error) {
       message.error(getErrorMessage(error));
     } finally {
@@ -164,13 +176,13 @@ export default function ClassDetailPage() {
       type="info"
       showIcon
       message="The syllabus is available to active class members."
-      description={
-        membershipStatus === "PENDING"
+      description={membershipStatusError
+        ? "Your membership status could not be checked, so join actions are unavailable. Please try again later."
+        : membershipStatus === "PENDING"
           ? "Your request is waiting for tutor approval."
-          : "Join this class to view its published learning outline."
-      }
+          : "Join this class to view its published learning outline."}
       action={
-        membershipStatus === "PENDING" ? (
+        !membershipStatusAvailable ? undefined : membershipStatus === "PENDING" ? (
           <Popconfirm
             title="Withdraw your join request?"
             okText="Withdraw request"
@@ -274,6 +286,15 @@ export default function ClassDetailPage() {
                 </div>
               </div>
             </Card>
+
+            {membershipStatusError && (
+              <Alert
+                type="warning"
+                showIcon
+                message="Membership status is unavailable"
+                description="Membership actions are disabled until your status can be loaded."
+              />
+            )}
 
             {membershipStatus === "ACTIVE" && (
               <div className="class-detail__membership-status">

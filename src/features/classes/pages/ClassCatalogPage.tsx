@@ -62,6 +62,8 @@ export default function ClassCatalogPage() {
   const [membershipByClass, setMembershipByClass] = useState<
     Record<string, MembershipStatus>
   >({});
+  const [membershipStatusAvailable, setMembershipStatusAvailable] = useState(false);
+  const [membershipStatusError, setMembershipStatusError] = useState<string | null>(null);
   const [joiningClassId, setJoiningClassId] = useState<string | null>(null);
 
   const loading = catalogResult?.key !== requestKey;
@@ -102,9 +104,12 @@ export default function ClassCatalogPage() {
         setMembershipByClass(Object.fromEntries(
           memberships.map(({ class_id, status }) => [class_id, status]),
         ));
+        setMembershipStatusAvailable(true);
       })
-      .catch(() => {
-        // Catalog browsing remains available if membership status is unavailable.
+      .catch((requestError: unknown) => {
+        if (!controller.signal.aborted) {
+          setMembershipStatusError(getErrorMessage(requestError));
+        }
       });
 
     return () => controller.abort();
@@ -256,6 +261,16 @@ export default function ClassCatalogPage() {
           />
         )}
 
+        {membershipStatusError && (
+          <Alert
+            type="warning"
+            showIcon
+            message="Membership status is unavailable"
+            description="You can browse classes, but join and leave actions are disabled until your membership status can be loaded."
+            className="class-catalog__error"
+          />
+        )}
+
         {loading ? (
           <div className="class-catalog__loading" role="status" aria-live="polite">
             <Spin />
@@ -277,6 +292,8 @@ export default function ClassCatalogPage() {
                   <ClassCard
                     classItem={classItem}
                     membershipStatus={membershipByClass[classItem.class_id]}
+                    membershipStatusAvailable={membershipStatusAvailable}
+                    membershipStatusFailed={membershipStatusError !== null}
                     joining={joiningClassId === classItem.class_id}
                     onJoin={() => handleJoin(classItem)}
                     onMembershipEnd={(status) =>
@@ -304,12 +321,16 @@ export default function ClassCatalogPage() {
 function ClassCard({
   classItem,
   membershipStatus,
+  membershipStatusAvailable,
+  membershipStatusFailed,
   joining,
   onJoin,
   onMembershipEnd,
 }: {
   classItem: ClassCatalogItem;
   membershipStatus?: MembershipStatus;
+  membershipStatusAvailable: boolean;
+  membershipStatusFailed: boolean;
   joining: boolean;
   onJoin: () => void;
   onMembershipEnd: (status: "ACTIVE" | "PENDING") => void;
@@ -329,6 +350,11 @@ function ClassCard({
         : canRequest
           ? "Request to Join"
           : "Join Class";
+  const displayedActionLabel = membershipStatusAvailable
+    ? actionLabel
+    : membershipStatusFailed
+      ? "Membership unavailable"
+      : "Checking membership…";
 
   return (
     <Card className="class-catalog__card">
@@ -395,11 +421,11 @@ function ClassCard({
           <Button
             block
             type="primary"
-            disabled={isFull && !canRequest}
+            disabled={!membershipStatusAvailable || (isFull && !canRequest)}
             loading={joining}
             onClick={onJoin}
           >
-            {actionLabel}
+            {displayedActionLabel}
           </Button>
         )}
       </div>
