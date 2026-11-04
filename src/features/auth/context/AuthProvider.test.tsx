@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@t
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppProviders from '@/app/providers'
+import { AuthSessionState } from '../components/AuthSessionState'
 import { authApi } from '@/api/authApi'
 import { ApiError } from '@/api/apiError'
 import { centralIdentityClient } from '@/api/centralIdentityClient'
@@ -137,7 +138,7 @@ describe('bootstrap and restore recovery', () => {
     tokenStorage.saveSession(authSession())
     const pending = deferred<CurrentUserResponse>()
     const verify = vi.spyOn(authApi, 'getCurrentUser').mockReturnValue(pending.promise)
-    render(<StrictMode><AppProviders><div>Router content</div></AppProviders></StrictMode>)
+    render(<StrictMode><AppProviders><AuthSessionState><div>Router content</div></AuthSessionState></AppProviders></StrictMode>)
     expect(screen.getByRole('status', { name: 'Verifying your session' })).toBeInTheDocument()
     expect(screen.queryByText('Router content')).not.toBeInTheDocument()
     await act(async () => pending.reject(new ApiError(errorEnvelope({ status: 503, message: 'Private SQL failure' }))))
@@ -153,7 +154,7 @@ describe('bootstrap and restore recovery', () => {
   it('Sign in again clears a failed restore and lets the router render', async () => {
     tokenStorage.saveSession(authSession())
     vi.spyOn(authApi, 'getCurrentUser').mockRejectedValue(new ApiError(errorEnvelope({ status: 503 })))
-    render(<AppProviders><div>Sign-in routing</div></AppProviders>)
+    render(<AppProviders><AuthSessionState><div>Sign-in routing</div></AuthSessionState></AppProviders>)
     fireEvent.click(await screen.findByRole('button', { name: 'Sign in again' }))
     expect(await screen.findByText('Sign-in routing')).toBeInTheDocument()
     expect(tokenStorage.getSession()).toBeNull()
