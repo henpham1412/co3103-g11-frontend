@@ -3,11 +3,12 @@ import react from '@vitejs/plugin-react'
 import { defaultExclude, defineConfig } from 'vitest/config'
 
 const pureTests = [
+  'src/api/passwordRecoveryMapping.test.ts',
   'src/features/auth/utils/*.test.ts', 'src/utils/*.test.ts',
   'src/api/apiError.test.ts', 'src/api/clients.test.ts', 'src/api/authMapping.test.ts', 'src/app/theme.test.ts',
 ]
 const storageTests = ['src/features/auth/services/*.test.ts']
-const apiTests = ['src/api/authApi.test.ts', 'src/api/authInterceptors.test.ts']
+const apiTests = ['src/api/authApi.test.ts', 'src/api/authInterceptors.test.ts', 'src/api/passwordRecoveryApi.test.ts']
 
 export default defineConfig({
   plugins: [react()],

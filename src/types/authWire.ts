@@ -1,5 +1,8 @@
 import type { UserStatus } from './auth'
 
+export interface ForgotPasswordRequestDto { email: string }
+export interface ResetPasswordRequestDto { token: string; new_password: string }
+
 // Central Identity HTTP contracts. UI and persisted sessions use auth.ts models.
 export interface AuthIdentityDto {
   user_id: string

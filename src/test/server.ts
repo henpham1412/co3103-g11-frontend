@@ -2,11 +2,14 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { centralIdentityClient } from '@/api/centralIdentityClient'
 import { wireCurrentUser, wireLoginResponse, wireRegisteredUser } from './fixtures/authWire'
+import { wireForgotAcknowledgment } from './fixtures/passwordRecoveryWire'
 
 export const identityApiUrl = (path: string) =>
   `${centralIdentityClient.defaults.baseURL?.replace(/\/$/, '')}${path}`
 
 export const handlers = [
+  http.post(identityApiUrl('/auth/forgot-password'), () => HttpResponse.json(wireForgotAcknowledgment)),
+  http.post(identityApiUrl('/auth/reset-password'), () => new HttpResponse(null, { status: 204 })),
   http.post(identityApiUrl('/auth/register'), () => HttpResponse.json(wireRegisteredUser, { status: 201 })),
   http.post(identityApiUrl('/auth/login'), () => HttpResponse.json(wireLoginResponse())),
   http.get(identityApiUrl('/users/me'), () => HttpResponse.json(wireCurrentUser)),
