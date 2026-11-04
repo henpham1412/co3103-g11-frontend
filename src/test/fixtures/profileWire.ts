@@ -17,6 +17,23 @@ export const avatarUrlCases = [
   { value: 'https://example.com:443/a.png', serialized: 'https://example.com:443/a.png' },
   { value: 'http://[::1]:8080/a.png', serialized: 'http://[::1]:8080/a.png' },
   ...[
+    'https://vídụ.vn/ảnh.png?q=TiếngViệt#ảnh😀',
+    'https://[2001:db8::1]/a%7Cb.png?q=%5Bavatar%5D#%23part',
+    'https://example.com/a%7Cb.png',
+    'https://example.com/%7Bavatar%7D%5B1%5D%5C%5E%60%22%3C%3E.png',
+    'https://example.com/%25%20%2f?next=%2Fảnh%3Fq%3D1#%7c',
+    "https://example.com/azAZ09-._~!$&'()*+,;=:@/?q=:/?@!$&'()*+,;=#part/?",
+    'http://example.com', 'https://example.com?avatar=1', 'https://example.com#avatar',
+    'https://example.com/a?#',
+  ].map(value => ({ value, serialized: value })),
+  ...['{', '}', '|', '^', '"', '<', '>', '\\', '[', ']', '`', '%', '%2', '%zz', '%2G', '%G2', '%ＦＦ'].flatMap(character => [
+    `https://example.com/a${character}z.png`,
+    `https://example.com/a?q=a${character}z`,
+    `https://example.com/a#part${character}z`,
+  ]).map(value => ({ value, serialized: null })),
+  ...[
+    'https://example.com/%', 'https://example.com/%2', 'https://example.com/%20%',
+    'https://example.com/a#b#c', 'https://example.com/a?b#c#d',
     'javascript:alert(1)', 'data:image/png;base64,x', '//example.com/a', 'https:example.com/a',
     'https://example.com\\a.png', 'https:\\example.com/a', 'https://', 'https:///a.png',
     'https:////example.com/a', 'https://?q=example.com', 'https://#example.com',

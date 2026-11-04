@@ -26,10 +26,15 @@ export function validateDateOfBirth(value: string, today = localToday()): string
 }
 
 export function isSafeAvatarUrl(value: string): boolean {
-  if (!isValidUnicodeText(value) || /[\\\s\p{Cc}]/u.test(value)) return false
+  // WHATWG parsing can repair characters that Hibernate's URI parser rejects.
+  // Require URI-safe characters and complete percent escapes in the original value.
+  if (!isValidUnicodeText(value) || /[\\\s\p{Cc}<>"`{}|^]|%(?![\da-f]{2})/iu.test(value)) return false
   // Check the original authority before WHATWG URL can repair missing hosts,
   // empty ports or percent-encoded host names. IPv6 syntax is checked by URL.
-  if (!/^https?:\/\/(?:\[[\da-f:.]+\]|[^/?#:@%[\]]+)(?::\d+)?(?:[/?#]|$)/i.test(value)) return false
+  const authority = /^https?:\/\/(?:\[[\da-f:.]+\]|[^/?#:@%[\]]+)(?::\d+)?(?=[/?#]|$)/i.exec(value)
+  if (!authority) return false
+  // Brackets belong only to an IPv6 host; a fragment cannot contain another '#'.
+  if (/[[\]]|#.*#/u.test(value.slice(authority[0].length))) return false
   try {
     const url = new URL(value)
     return ['http:', 'https:'].includes(url.protocol) && !!url.hostname && !url.username && !url.password

@@ -35,7 +35,7 @@ it('redirects anonymous entry to sign in, then loads the complete profile with B
   expect(screen.queryByText('No connected workspaces')).not.toBeInTheDocument()
 })
 
-it.each([undefined, null, {}, { bio: 'Only bio', date_of_birth: 'invalid', avatar_url: 'javascript:alert(1)' }, { avatar_url: 'https://example.com\\a.png' }, { avatar_url: 'https:///a.png' }])('renders incomplete profile safely', async profile => {
+it.each([undefined, null, {}, { bio: 'Only bio', date_of_birth: 'invalid', avatar_url: 'javascript:alert(1)' }, { avatar_url: 'https://example.com\\a.png' }, { avatar_url: 'https:///a.png' }, { avatar_url: 'https://example.com/a|b.png' }, { avatar_url: 'https://example.com/%zz' }])('renders incomplete profile safely', async profile => {
   server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...wireCurrentUser, profile })))
   renderProfilePage()
   const summary = await screen.findByRole('region', { name: 'Test Student' }, uiReady)
@@ -107,6 +107,43 @@ it.each([
   if (key === 'full_name') expect(within(screen.getByRole('banner')).getByText('Canonical new name')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Edit profile' }))
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+})
+
+it('blocks an invalid avatar and valid bio before PATCH, then saves the corrected URL unchanged', async () => {
+  let canonical = structuredClone(wireFullProfile)
+  const mutations = vi.fn()
+  server.use(
+    http.get(identityApiUrl('/users/me'), () => HttpResponse.json(canonical)),
+    http.patch(identityApiUrl('/users/me'), async ({ request }) => {
+      const body = await request.json() as Record<string, string>
+      mutations(body)
+      canonical = { ...canonical, profile: { ...canonical.profile, ...body } }
+      return HttpResponse.json(wireProfileAcknowledgment)
+    }),
+  )
+  const update = vi.spyOn(profileApi, 'updateCurrentUser')
+  const { user } = renderProfilePage()
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
+  fireEvent.change(screen.getByLabelText('Bio'), { target: { value: 'Valid draft bio' } })
+  const avatar = screen.getByLabelText('Avatar URL')
+  const save = screen.getByRole('button', { name: 'Save changes' })
+  for (const value of ['https://example.com/a|b.png', 'https://example.com/%zz', 'https://example.com/a#b#c']) {
+    fireEvent.change(avatar, { target: { value } })
+    expect(save).toBeDisabled()
+    fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
+    await waitFor(() => expect(avatar).toHaveAttribute('aria-invalid', 'true'))
+    await waitFor(() => expect(avatar).toHaveFocus())
+    expect(screen.getByLabelText('Bio')).toHaveValue('Valid draft bio')
+    expect(update).not.toHaveBeenCalled()
+    expect(mutations).not.toHaveBeenCalled()
+  }
+  const corrected = 'https://example.com/ảnh%7Cb.png?q=%25#%23part'
+  fireEvent.change(avatar, { target: { value: corrected } })
+  await waitFor(() => expect(avatar).not.toHaveAttribute('aria-invalid', 'true'))
+  await user.click(save)
+  await screen.findByText('Profile saved.', {}, uiReady)
+  expect(mutations).toHaveBeenCalledExactlyOnceWith({ avatar_url: corrected, bio: 'Valid draft bio' })
+  expect(screen.getByRole('img', { name: "Test Student's avatar" })).toHaveAttribute('src', corrected)
 })
 
 it('cancels a pending optional-field clear without sending HTTP', async () => {

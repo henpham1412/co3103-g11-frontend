@@ -16,6 +16,7 @@ export function serializeProfileChanges(changes: ProfileChanges, today = localTo
   for (const field of profileFields) {
     if (!Object.hasOwn(changes, field)) continue
     const value: unknown = changes[field]
+    // Validate the original URI before normalizing its scheme for the wire payload.
     if (validateProfileValue(field, value, today)) throw invalid()
     if (field === 'fullName') payload.full_name = (value as string).trim()
     else {

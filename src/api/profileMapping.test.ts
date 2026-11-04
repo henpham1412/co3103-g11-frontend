@@ -51,9 +51,9 @@ it.each([
 })
 
 it.each(avatarUrlCases)('serializes only backend-compatible avatar URLs: $value', ({ value, serialized }) => {
-  const changes = { avatarUrl: value }
-  if (serialized === null) expect(() => serializeProfileChanges(changes)).toThrow('Please check your profile changes.')
-  else expect(serializeProfileChanges(changes)).toEqual({ avatar_url: serialized })
+  const changes = { fullName: 'Valid name', avatarUrl: value, bio: 'Valid bio' }
+  if (serialized === null) expect(() => serializeProfileChanges(changes)).toThrow(expect.objectContaining({ code: 'INVALID_PROFILE_CHANGES' }))
+  else expect(serializeProfileChanges(changes)).toEqual({ full_name: 'Valid name', avatar_url: serialized, bio: 'Valid bio' })
   expect(changes.avatarUrl).toBe(value)
 })
 
