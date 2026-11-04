@@ -16,7 +16,7 @@ function renderGuard(Guard: typeof ProtectedRoute, state: AuthState, from?: unkn
   ], { initialEntries: [{ pathname: '/guarded', search: '?view=mine', hash: '#current', state: { from } }] })
   const originalLocation = router.state.location
   render(
-    <AuthContext value={{ state, login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn() }}>
+    <AuthContext value={{ state, login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(), refreshCurrentUser: vi.fn() }}>
       <RouterProvider router={router} />
     </AuthContext>,
   )

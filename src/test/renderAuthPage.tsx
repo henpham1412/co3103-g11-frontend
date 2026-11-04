@@ -33,6 +33,7 @@ export function renderAuthPage(path: '/login' | '/register' | '/forgot-password'
           login: async credentials => authSession(await authApi.login(credentials)),
           logout: async () => { },
           retrySessionVerification: async () => { },
+          refreshCurrentUser: signal => authApi.getCurrentUser(undefined, signal),
         }}>{content}</AuthContext></App>
       )}
     </ConfigProvider>, { reactStrictMode: options.strict },

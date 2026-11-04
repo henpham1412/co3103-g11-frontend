@@ -63,7 +63,7 @@ it.each(['lazy import', 'render'])('recovers from a route %s failure without sho
   const view = render(
     <AuthContext value={{
       state: { status: 'authenticated', user: validUser, session: authSession() },
-      login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(),
+      login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(), refreshCurrentUser: vi.fn(),
     }}>
       <RouterProvider router={router} />
     </AuthContext>,
@@ -106,7 +106,7 @@ it('keeps the workspace usable when the session expiry exceeds the date display 
   render(
     <AuthContext value={{
       state: { status: 'authenticated', user: validUser, session },
-      login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(),
+      login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(), refreshCurrentUser: vi.fn(),
     }}>
       <App />
     </AuthContext>,
