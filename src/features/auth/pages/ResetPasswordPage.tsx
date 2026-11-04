@@ -35,12 +35,18 @@ function ResetPasswordForm({ selection, clear }: { selection: ResetToken; clear:
     if (submitting) return
     if (feedback?.field) form.focusField(feedback.field)
     else if (feedback?.message || success) banner.current?.focus()
-  }, [feedback, form, submitting, success])
+    else if (selection.kind === 'invalid') form.focusField('token')
+  }, [feedback, form, submitting, success, selection.kind])
 
   async function submit(values: ResetValues) {
     if (pending.current) return
     const token = selection.kind === 'token' ? selection.token : values.token ?? ''
-    if (validateResetToken(token)) return
+    const tokenError = validateResetToken(token)
+    if (tokenError) {
+      if (manual) form.setFields([{ name: 'token', errors: [tokenError] }])
+      setFeedback({ message: tokenError, field: manual ? 'token' : undefined })
+      return
+    }
     const controller = new AbortController()
     pending.current = controller
     setSubmitting(true)
@@ -74,6 +80,7 @@ function ResetPasswordForm({ selection, clear }: { selection: ResetToken; clear:
     </> : <>
       <p className="auth-subtitle">Choose a strong password for your central account.</p>
       {selection.kind === 'ambiguous' && <Alert type="info" title="This link contains multiple tokens. Please enter the token from your email." role="note" />}
+      {selection.kind === 'invalid' && <Alert type="info" title="This reset link contains an invalid token. Please enter the token from your email." role="note" />}
       {feedback?.message && <div ref={banner} role="alert" tabIndex={-1}><Alert type="error" title={feedback.message} showIcon role="presentation" /></div>}
       <Form form={form} name="reset" layout="vertical" requiredMark={false} onFinish={submit} scrollToFirstError={{ focus: true }}
         disabled={submitting} aria-label="Reset password" aria-busy={submitting} noValidate>

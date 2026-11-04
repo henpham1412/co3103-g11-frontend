@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { invalidTextCases, profileTextCases } from '@/test/fixtures/invalidText'
 import { isCalendarDate, isSafeAvatarUrl, localToday, validateDateOfBirth, validateProfileValue } from './profileValidation'
 
 it('validates real calendar dates with explicit local today and no invented age limit', () => {
@@ -8,6 +9,24 @@ it('validates real calendar dates with explicit local today and no invented age 
   expect(isCalendarDate('2000-02-29')).toBe(true)
   expect(localToday(new Date(2026, 10, 4, 0, 1))).toBe(today)
   expect(localToday(new Date(2026, 10, 3, 23, 59))).toBe('2026-11-03')
+})
+
+describe.each(profileTextCases)('$field', ({ field, value }) => {
+  it.each(invalidTextCases)('rejects $name before field-specific validation', ({ character }) => {
+    expect(validateProfileValue(field, value + character)).toBe('Please remove invalid characters from this value.')
+  })
+})
+
+it('preserves Vietnamese, supplementary Unicode and multiline text', () => {
+  for (const field of ['fullName', 'bio', 'phoneNumber', 'locale', 'timezone'] as const) {
+    expect(validateProfileValue(field, 'Tiếng Việt e\u0301😀')).toBeUndefined()
+  }
+  expect(validateProfileValue('bio', ' Một dòng 😀\n\tDòng thứ hai\r\n ')).toBeUndefined()
+  expect(validateProfileValue('avatarUrl', 'https://example.com/ảnh😀.png')).toBeUndefined()
+})
+
+it.each(invalidTextCases)('rejects avatar $name before URL parsing can replace it', ({ character }) => {
+  expect(isSafeAvatarUrl('https://example.com/' + character + '.png')).toBe(false)
 })
 it('limits avatars to absolute HTTP(S) without credentials or controls', () => {
   for (const url of ['https://images.example/a.png', 'http://images.example/a?q=1']) expect(isSafeAvatarUrl(url)).toBe(true)

@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { passwordRecoveryApi } from '@/api/passwordRecoveryApi'
 import { ApiError } from '@/api/apiError'
+import { centralIdentityClient } from '@/api/centralIdentityClient'
 import { authSession, errorEnvelope, validUser } from '@/test/fixtures/auth'
 import { deferred, renderAuthPage, setAuthFields } from '@/test/renderAuthPage'
 import { identityApiUrl, server } from '@/test/server'
@@ -12,6 +13,51 @@ const password = 'Safe-test-123!'
 const validFields = { 'New password': password, 'Confirm password': password }
 
 describe('ResetPasswordPage', () => {
+  // Keep one representative per distinct form binding; unit tests own the character matrix.
+  it.each([
+    { label: 'Reset token', character: '\0' },
+    { label: 'New password', character: '\uD800' },
+  ])('blocks unsafe $label with focused, secret-free feedback before HTTP', async ({ label, character }) => {
+    const post = vi.spyOn(centralIdentityClient, 'post')
+    const { user } = renderAuthPage('/reset-password', undefined, { integration: true })
+    const secret = 'Ab1!secret' + character
+    setAuthFields({ 'Reset token': 'opaque', ...validFields, [label]: secret,
+      ...(label === 'New password' ? { 'Confirm password': secret } : {}) })
+    await user.click(screen.getByRole('button', { name: 'Reset password' }))
+    const message = label === 'Reset token' ? 'Please enter a valid reset token from your email.'
+      : 'Please remove invalid characters from your new password.'
+    await screen.findByText(message, {}, { timeout: 5000 })
+    await waitFor(() => expect(screen.getByLabelText(label, { exact: true })).toHaveFocus(), { timeout: 5000 })
+    expect(screen.getByLabelText(label, { exact: true })).toHaveAttribute('aria-invalid', 'true')
+    expect(document.body.textContent).not.toContain('Ab1!secret')
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('scrubs an unsafe query, focuses manual entry and permits a valid replacement', async () => {
+    const post = vi.spyOn(centralIdentityClient, 'post')
+    const received = vi.fn()
+    server.use(http.post(identityApiUrl('/auth/reset-password'), async ({ request }) => {
+      received(await request.json())
+      return new HttpResponse(null, { status: 204 })
+    }))
+    const { user, router } = renderAuthPage('/reset-password', undefined, { search: '?token=%ED%A0%80', integration: true, strict: true })
+    await screen.findByText('This reset link contains an invalid token. Please enter the token from your email.', {}, { timeout: 5000 })
+    await waitFor(() => {
+      expect(router.state.location.search).toBe('')
+      expect(screen.getByLabelText('Reset token')).toHaveFocus()
+    }, { timeout: 5000 })
+    expect(screen.getByLabelText('Reset token')).toHaveValue('')
+    setAuthFields(validFields)
+    await user.click(screen.getByRole('button', { name: 'Reset password' }))
+    await screen.findByText('Please enter the reset token from your email.', {}, { timeout: 5000 })
+    expect(post).not.toHaveBeenCalled()
+    const newPassword = ' Ab1!Việt e\u0301😀 '
+    setAuthFields({ 'Reset token': ' opaque 😀 ', 'New password': newPassword, 'Confirm password': newPassword })
+    await user.click(screen.getByRole('button', { name: 'Reset password' }))
+    await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, { timeout: 5000 })
+    expect(received).toHaveBeenCalledExactlyOnceWith({ token: ' opaque 😀 ', new_password: newPassword })
+  })
+
   it('submits the captured opaque token in StrictMode, scrubs URL and replaces navigation with safe success', async () => {
     const received = vi.fn()
     server.use(http.post(identityApiUrl('/auth/reset-password'), async ({ request }) => {
@@ -34,9 +80,13 @@ describe('ResetPasswordPage', () => {
     expect(spies.every(spy => spy.mock.calls.every(args => !JSON.stringify(args).includes(password) && !JSON.stringify(args).includes('+%25')))).toBe(true)
   })
 
-  it.each(['', '?token=', '?token=%20', '?token=a&token=b'])('supports manual entry for missing or unusable query %s', async search => {
+  it.each([
+    { kind: 'missing', search: '' },
+    { kind: 'ambiguous', search: '?token=a&token=b' },
+  ])('supports manual entry for a $kind query', async ({ kind, search }) => {
     const send = vi.spyOn(passwordRecoveryApi, 'resetPassword').mockResolvedValue(undefined)
     const { user } = renderAuthPage('/reset-password', undefined, { search })
+    if (kind === 'ambiguous') expect(screen.getByRole('note')).toHaveTextContent('This link contains multiple tokens.')
     setAuthFields(validFields)
     await user.click(screen.getByRole('button', { name: 'Reset password' }))
     await screen.findByText('Please enter the reset token from your email.')
@@ -47,14 +97,12 @@ describe('ResetPasswordPage', () => {
     expect(send.mock.calls[0][0].token === ' opaque ').toBe(true)
   })
 
-  it('rejects each policy violation and revalidates confirmation when the new password changes', async () => {
+  it('reports a policy violation and revalidates confirmation when the new password changes', async () => {
     const send = vi.spyOn(passwordRecoveryApi, 'resetPassword')
     const { user } = renderAuthPage('/reset-password', undefined, { search: '?token=synthetic' })
-    for (const value of ['Ab1!abc', 'ab1!abcd', 'AB1!ABCD', 'Abc!abcd', 'Abc1abcd']) {
-      setAuthFields({ 'New password': value, 'Confirm password': value })
-      await user.click(screen.getByRole('button', { name: 'Reset password' }))
-      await screen.findByText('Please meet all password requirements.')
-    }
+    setAuthFields({ 'New password': 'Abc1abcd', 'Confirm password': 'Abc1abcd' })
+    await user.click(screen.getByRole('button', { name: 'Reset password' }))
+    await screen.findByText('Please meet all password requirements.')
     setAuthFields({ ...validFields, 'Confirm password': 'different' })
     await user.click(screen.getByRole('button', { name: 'Reset password' }))
     await screen.findByText('Passwords do not match.')

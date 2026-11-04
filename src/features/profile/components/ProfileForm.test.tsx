@@ -12,6 +12,18 @@ function setup() {
   return { ...view, save, cancel, user: userEvent.setup() }
 }
 
+// The shared field validator is exhaustive in profileValidation.test.ts; verify its UI wiring once.
+it('disables Save and focuses local feedback for invalid text', async () => {
+  const { save } = setup()
+  fireEvent.change(screen.getByLabelText('Bio'), { target: { value: 'Draft\uD800' } })
+  fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
+  await screen.findByText('Please remove invalid characters from this value.', {}, { timeout: 5000 })
+  await waitFor(() => expect(screen.getByLabelText('Bio')).toHaveFocus(), { timeout: 5000 })
+  expect(screen.getByLabelText('Bio')).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(save).not.toHaveBeenCalled()
+})
+
 it('disables pristine/reverted saves and never submits an unchanged form', async () => {
   const { save } = setup()
   const submit = screen.getByRole('button', { name: 'Save changes' })

@@ -10,6 +10,9 @@ import { deferred, fillAuthFields, setAuthFields } from '@/test/renderAuthPage'
 import { renderProfilePage } from '@/test/renderProfilePage'
 import { identityApiUrl, server } from '@/test/server'
 
+// Wait for lazy routes and session bootstrap, including on two-CPU runners.
+const uiReady = { timeout: 5000 }
+
 it('completes login → forgot → query reset → sign-in through real routes, provider and HTTP without disclosing secrets', async () => {
   const spies = ['log', 'warn', 'error', 'info', 'debug'].map(method => vi.spyOn(console, method as 'log').mockImplementation(() => {}))
   const received = vi.fn()
@@ -23,18 +26,18 @@ it('completes login → forgot → query reset → sign-in through real routes, 
     return new HttpResponse(null, { status: 204 })
   }))
   const { user, router } = renderProfilePage({ session: null, path: '/login' })
-  await user.click(await screen.findByRole('link', { name: 'Forgot password?' }))
-  await screen.findByRole('heading', { name: 'Forgot your password?' })
+  await user.click(await screen.findByRole('link', { name: 'Forgot password?' }, uiReady))
+  await screen.findByRole('heading', { name: 'Forgot your password?' }, uiReady)
   await fillAuthFields(user, { Email: ' Student@Example.COM ' })
   await user.click(screen.getByRole('button', { name: 'Send reset link' }))
-  expect(await screen.findByRole('status')).toHaveTextContent(forgotSuccessMessage)
+  expect(await screen.findByRole('status', {}, uiReady)).toHaveTextContent(forgotSuccessMessage)
   expect(screen.queryByText('untrusted account detail')).not.toBeInTheDocument()
   await act(() => router.navigate('/reset-password?token=' + encodeURIComponent(wireResetPassword.token)))
-  await screen.findByRole('heading', { name: 'Reset your password' })
-  await waitFor(() => expect(router.state.location.search).toBe(''))
+  await screen.findByRole('heading', { name: 'Reset your password' }, uiReady)
+  await waitFor(() => expect(router.state.location.search).toBe(''), uiReady)
   await fillAuthFields(user, { 'New password': wireResetPassword.new_password, 'Confirm password': wireResetPassword.new_password })
   await user.click(screen.getByRole('button', { name: 'Reset password' }))
-  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
+  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, uiReady)
   expect(screen.getByRole('status')).toHaveTextContent(resetSuccessMessage)
   expect(received).toHaveBeenCalledExactlyOnceWith(wireResetPassword)
   expect(router.state.location.state).toEqual({ message: resetSuccessMessage })
@@ -48,22 +51,22 @@ it('supports required manual token, invalid-token feedback, requesting again and
   server.use(http.post(identityApiUrl('/auth/reset-password'), () => ++attempts === 1
     ? HttpResponse.json({ code: 'INVALID_OR_EXPIRED_RESET_TOKEN', message: 'untrusted diagnostic' }, { status: 400 }) : new HttpResponse(null, { status: 204 })))
   const { user } = renderProfilePage({ session: null, path: '/reset-password' })
-  await screen.findByLabelText('Reset token')
+  await screen.findByLabelText('Reset token', {}, uiReady)
   setAuthFields({ 'New password': 'Safe-test-123!', 'Confirm password': 'Safe-test-123!' })
   await user.click(screen.getByRole('button', { name: 'Reset password' }))
   await screen.findByText('Please enter the reset token from your email.')
   expect(attempts).toBe(0)
   await fillAuthFields(user, { 'Reset token': 'invalid-synthetic' })
   await user.click(screen.getByRole('button', { name: 'Reset password' }))
-  await screen.findAllByText(/This reset link is invalid or has expired/)
+  await screen.findAllByText(/This reset link is invalid or has expired/, {}, uiReady)
   expect(screen.queryByText('untrusted diagnostic')).not.toBeInTheDocument()
   await user.click(screen.getByRole('link', { name: 'Request a new reset link' }))
-  await screen.findByRole('heading', { name: 'Forgot your password?' })
+  await screen.findByRole('heading', { name: 'Forgot your password?' }, uiReady)
   await user.click(screen.getByRole('link', { name: 'Enter a reset token' }))
-  await screen.findByLabelText('Reset token')
+  await screen.findByLabelText('Reset token', {}, uiReady)
   await fillAuthFields(user, { 'Reset token': 'replacement-synthetic', 'New password': 'Safe-test-123!', 'Confirm password': 'Safe-test-123!' })
   await user.click(screen.getByRole('button', { name: 'Reset password' }))
-  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
+  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, uiReady)
   expect(attempts).toBe(2)
 })
 
@@ -80,16 +83,16 @@ it.each(['initializing', 'restore-error', 'authenticated'])('keeps recovery publ
   }))
   const { user, router } = renderProfilePage({ session, path: '/forgot-password' })
   await started.promise
-  await screen.findByRole('heading', { name: 'Forgot your password?' })
+  await screen.findByRole('heading', { name: 'Forgot your password?' }, uiReady)
   setAuthFields({ Email: 'student@example.com' })
   await user.click(screen.getByRole('button', { name: 'Send reset link' }))
-  await screen.findByText('Unable to complete this request. Please try again later.')
+  await screen.findByText('Unable to complete this request. Please try again later.', {}, uiReady)
   expect(tokenStorage.getSession()?.sessionId).toBe(session.sessionId)
   await act(() => router.navigate('/reset-password?token=synthetic'))
-  await screen.findByRole('heading', { name: 'Reset your password' })
+  await screen.findByRole('heading', { name: 'Reset your password' }, uiReady)
   setAuthFields({ 'New password': 'Safe-test-123!', 'Confirm password': 'Safe-test-123!' })
   await user.click(screen.getByRole('button', { name: 'Reset password' }))
-  await screen.findByText('Unable to complete this request. Please try again later.')
+  await screen.findByText('Unable to complete this request. Please try again later.', {}, uiReady)
   expect(tokenStorage.getSession()?.sessionId).toBe(session.sessionId)
   await act(() => router.navigate('/profile'))
   if (phase === 'initializing') {
@@ -97,7 +100,7 @@ it.each(['initializing', 'restore-error', 'authenticated'])('keeps recovery publ
     await act(async () => pending.resolve(new HttpResponse(null, { status: 503 })))
   }
   if (phase !== 'authenticated') {
-    await screen.findByRole('button', { name: 'Retry' })
+    await screen.findByRole('button', { name: 'Retry' }, uiReady)
     expect(screen.queryByRole('heading', { name: 'My profile' })).not.toBeInTheDocument()
-  } else await screen.findByRole('heading', { name: 'My profile' })
+  } else await screen.findByRole('heading', { name: 'My profile' }, uiReady)
 })

@@ -1,5 +1,6 @@
 import { validateFullName } from '@/features/auth/utils/authValidation'
 import type { ProfileField } from '@/types/profile'
+import { isValidUnicodeText } from '@/utils/unicodeText'
 
 export function localToday(now = new Date()): string {
   return `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -19,7 +20,7 @@ export function validateDateOfBirth(value: string, today = localToday()): string
 }
 
 export function isSafeAvatarUrl(value: string): boolean {
-  if (!/^https?:\/\//i.test(value) || /[\s\p{Cc}]/u.test(value)) return false
+  if (!isValidUnicodeText(value) || !/^https?:\/\//i.test(value) || /[\s\p{Cc}]/u.test(value)) return false
   try {
     const url = new URL(value)
     return ['http:', 'https:'].includes(url.protocol) && !!url.hostname && !url.username && !url.password
@@ -28,6 +29,7 @@ export function isSafeAvatarUrl(value: string): boolean {
 
 export function validateProfileValue(field: ProfileField, value: unknown, today = localToday()): string | undefined {
   if (typeof value !== 'string') return 'Please enter a valid text value.'
+  if (!isValidUnicodeText(value)) return 'Please remove invalid characters from this value.'
   if (field === 'fullName') return validateFullName(value)
   if (!value.trim()) return 'Enter a value or cancel this change. Clearing this field is not supported yet.'
   if (field === 'dateOfBirth') return validateDateOfBirth(value, today)

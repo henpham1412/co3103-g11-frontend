@@ -13,6 +13,14 @@ const cases = [
   { path: '/auth/reset-password', body: wireResetPassword, call: (signal?: AbortSignal) => passwordRecoveryApi.resetPassword({ token: wireResetPassword.token, newPassword: wireResetPassword.new_password }, signal) },
 ]
 
+it('rejects an unsafe password before HTTP without disclosing credentials', async () => {
+  const post = vi.spyOn(centralIdentityClient, 'post')
+  await expect(passwordRecoveryApi.resetPassword({ token: 'opaque-test-token', newPassword: 'Ab1!secret\0' })).rejects.toMatchObject({
+    status: 400, code: 'INVALID_RESET_PASSWORD_REQUEST', message: 'Please check your reset token and new password.',
+  })
+  expect(post).not.toHaveBeenCalled()
+})
+
 describe.each(cases)('$path', ({ path, body, call }) => {
   it('sends exact public wire payload with active interceptors and accepts empty acknowledgment', async () => {
     const purge = vi.fn()

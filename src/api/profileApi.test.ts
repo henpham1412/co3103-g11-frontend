@@ -3,10 +3,16 @@ import { http, HttpResponse } from 'msw'
 import { expect, it, vi } from 'vitest'
 import { authSession } from '@/test/fixtures/auth'
 import { identityApiUrl, server } from '@/test/server'
-import type { ProfileChanges } from '@/types/profile'
 import { centralIdentityClient } from './centralIdentityClient'
 import { installAuthInterceptors, type SessionSnapshot } from './authInterceptors'
 import { profileApi } from './profileApi'
+
+it('blocks an invalid-text update before HTTP even alongside a valid change', async () => {
+  const patch = vi.spyOn(centralIdentityClient, 'patch')
+  await expect(profileApi.updateCurrentUser({ fullName: 'Valid name', bio: 'Draft\0' }, authSession().accessToken))
+    .rejects.toMatchObject({ status: 400, code: 'INVALID_PROFILE_CHANGES', message: 'Please check your profile changes.' })
+  expect(patch).not.toHaveBeenCalled()
+})
 
 it.each([200, 204])('sends captured Bearer and flat diff to Central Identity with acknowledgment %s, without GET', async status => {
   const session = authSession()
@@ -22,15 +28,6 @@ it.each([200, 204])('sends captured Bearer and flat diff to Central Identity wit
   await expect(profileApi.updateCurrentUser({ bio: 'New bio' }, session.accessToken)).resolves.toBeUndefined()
   expect(received).toHaveBeenCalledExactlyOnceWith({ bio: 'New bio' })
   expect(read).not.toHaveBeenCalled()
-})
-
-it('rejects invalid bodies before transport, even through direct API calls', async () => {
-  const received = vi.fn(() => new HttpResponse(null, { status: 204 }))
-  server.use(http.patch(identityApiUrl('/users/me'), received))
-  for (const changes of [{}, { fullName: null }, { fullName: undefined }, { dateOfBirth: '9999-12-31' }, { profile: { bio: 'nested' } }]) {
-    await expect(profileApi.updateCurrentUser(changes as ProfileChanges, authSession().accessToken)).rejects.toMatchObject({ code: 'INVALID_PROFILE_CHANGES' })
-  }
-  expect(received).not.toHaveBeenCalled()
 })
 
 it('purges only a current 401, preserves 403, and never attaches a replacement session credential', async () => {

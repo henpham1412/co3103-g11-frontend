@@ -3,6 +3,19 @@ import { validUser } from '@/test/fixtures/auth'
 import { profileFields, type ProfileFormValues } from '@/types/profile'
 import { buildProfileChanges, toProfileFormValues } from './profileForm'
 
+it('collects invalid-text field errors without returning a partial change', () => {
+  const baseline = toProfileFormValues(validUser)
+  expect(buildProfileChanges(baseline, {
+    ...baseline, fullName: ' Nguyễn\0 An ', bio: 'Draft\uD800', locale: 'vi-VN',
+  })).toEqual({
+    kind: 'invalid',
+    errors: {
+      fullName: 'Please remove invalid characters from this value.',
+      bio: 'Please remove invalid characters from this value.',
+    },
+  })
+})
+
 it('maps absent, null, empty and partial profiles to stable blank form values', () => {
   for (const profile of [undefined, null, {}, { bio: null }]) {
     const baseline = toProfileFormValues({ ...validUser, profile })

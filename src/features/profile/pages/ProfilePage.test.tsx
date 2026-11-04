@@ -8,6 +8,9 @@ import { deferred, setAuthFields } from '@/test/renderAuthPage'
 import { identityApiUrl, server } from '@/test/server'
 import { profileApi } from '@/api/profileApi'
 
+// Allow lazy routes and session/profile requests to settle on two-CPU runners.
+const uiReady = { timeout: 5000 }
+
 it('redirects anonymous entry to sign in, then loads the complete profile with Bearer after login', async () => {
   const read = vi.fn()
   server.use(http.get(identityApiUrl('/users/me'), ({ request }) => {
@@ -16,12 +19,12 @@ it('redirects anonymous entry to sign in, then loads the complete profile with B
     return HttpResponse.json({ ...wireFullProfile, role: 'UNEXPECTED ROLE' })
   }))
   const { user, router } = renderProfilePage({ session: null })
-  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
+  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, uiReady)
   expect(router.state.location.state.from.pathname).toBe('/profile')
   expect(screen.queryByRole('heading', { name: 'My profile' })).not.toBeInTheDocument()
   setAuthFields({ Email: 'student@example.com', Password: 'password' })
   await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
-  await screen.findByText('Learning together')
+  await screen.findByText('Learning together', {}, uiReady)
   expect(read).toHaveBeenCalledTimes(1)
   expect(screen.getByText('2001-03-15')).toBeInTheDocument()
   expect(screen.getByText('+0012345')).toBeInTheDocument()
@@ -34,7 +37,7 @@ it('redirects anonymous entry to sign in, then loads the complete profile with B
 it.each([undefined, null, {}, { bio: 'Only bio', date_of_birth: 'invalid', avatar_url: 'javascript:alert(1)' }])('renders incomplete profile safely', async profile => {
   server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...wireCurrentUser, profile })))
   renderProfilePage()
-  const summary = await screen.findByRole('region', { name: 'Test Student' })
+  const summary = await screen.findByRole('region', { name: 'Test Student' }, uiReady)
   expect(within(summary).getAllByText('Not provided').length).toBeGreaterThan(0)
   expect(within(summary).getByRole('img', { name: /avatar placeholder/ })).toBeInTheDocument()
   expect(within(summary).queryByText('invalid')).not.toBeInTheDocument()
@@ -43,7 +46,7 @@ it.each([undefined, null, {}, { bio: 'Only bio', date_of_birth: 'invalid', avata
 it('falls back once for a broken avatar and renders bio as plain text', async () => {
   server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...wireFullProfile, profile: { ...wireFullProfile.profile, bio: '<b>plain text</b>' } })))
   renderProfilePage()
-  const image = await screen.findByRole('img', { name: "Test Student's avatar" })
+  const image = await screen.findByRole('img', { name: "Test Student's avatar" }, uiReady)
   expect(image).toHaveAttribute('referrerpolicy', 'no-referrer')
   fireEvent.error(image)
   expect(screen.getByRole('img', { name: /avatar placeholder/ })).toBeInTheDocument()
@@ -55,22 +58,22 @@ it('keeps the shell mounted during profile loading/error and retries only GET', 
   let reads = 0
   server.use(http.get(identityApiUrl('/users/me'), () => ++reads === 1 ? HttpResponse.json(wireCurrentUser) : pending.promise))
   const { user } = renderProfilePage()
-  await screen.findByRole('heading', { name: 'My profile' })
+  await screen.findByRole('heading', { name: 'My profile' }, uiReady)
   expect(screen.getByRole('status')).toHaveTextContent('Loading your profile')
   await act(async () => pending.resolve(new HttpResponse(null, { status: 503 })))
-  await screen.findByText('Unable to load your profile. Please try again.')
+  await screen.findByText('Unable to load your profile. Please try again.', {}, uiReady)
   expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument()
   server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json(wireFullProfile)))
   await user.click(screen.getByRole('button', { name: 'Retry' }))
-  await screen.findByText('Learning together')
+  await screen.findByText('Learning together', {}, uiReady)
 })
 
 it('routes a current profile 401 back to login', async () => {
   let reads = 0
   server.use(http.get(identityApiUrl('/users/me'), () => ++reads === 1 ? HttpResponse.json(wireCurrentUser) : new HttpResponse(null, { status: 401 })))
   const { router } = renderProfilePage()
-  await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
-  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
+  await waitFor(() => expect(router.state.location.pathname).toBe('/login'), uiReady)
+  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, uiReady)
 })
 
 it.each([
@@ -92,11 +95,11 @@ it.each([
     }),
   )
   const { user } = renderProfilePage()
-  await user.click(await screen.findByRole('button', { name: 'Edit profile' }))
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
   fireEvent.change(screen.getByLabelText(label, { exact: true }), { target: { value } })
   await user.click(screen.getByRole('button', { name: 'Save changes' }))
-  await screen.findByText('Profile saved.')
+  await screen.findByText('Profile saved.', {}, uiReady)
   expect(mutations).toHaveBeenCalledExactlyOnceWith({ [key]: value })
   expect(order.slice(-2)).toEqual(['PATCH', 'GET'])
   if (key === 'full_name') expect(within(screen.getByRole('banner')).getByText('Canonical new name')).toBeInTheDocument()
@@ -108,7 +111,7 @@ it('cancels edits and prevents clearing existing optional fields without sending
   server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json(wireFullProfile)))
   const update = vi.spyOn(profileApi, 'updateCurrentUser')
   const { user } = renderProfilePage()
-  await user.click(await screen.findByRole('button', { name: 'Edit profile' }))
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
   fireEvent.change(screen.getByLabelText('Bio'), { target: { value: '' } })
   await screen.findByText(/Clearing this field is not supported yet/)
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
@@ -124,14 +127,14 @@ it.each([400, 422, 403, 0])('retains drafts with safe feedback after PATCH %s, t
   server.use(http.get(identityApiUrl('/users/me'), () => { reads++; return HttpResponse.json(wireFullProfile) }),
     http.patch(identityApiUrl('/users/me'), () => status === 0 ? HttpResponse.error() : HttpResponse.json({ message: 'private diagnostic', details: [{ field: 'bio', message: 'private diagnostic' }] }, { status })))
   const { user } = renderProfilePage()
-  await user.click(await screen.findByRole('button', { name: 'Edit profile' }))
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
   const initialReads = reads
   fireEvent.change(screen.getByLabelText('Bio'), { target: { value: 'Draft retained' } })
   await user.click(screen.getByRole('button', { name: 'Save changes' }))
   if (status === 400 || status === 422) {
-    await screen.findByText('Please check your bio.')
+    await screen.findByText('Please check your bio.', {}, uiReady)
     await waitFor(() => expect(screen.getByLabelText('Bio')).toHaveFocus())
-  } else await screen.findByRole('alert')
+  } else await screen.findByRole('alert', {}, uiReady)
   expect(screen.getByLabelText('Bio')).toHaveValue('Draft retained')
   expect(screen.queryByText('private diagnostic')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument()
@@ -139,7 +142,7 @@ it.each([400, 422, 403, 0])('retains drafts with safe feedback after PATCH %s, t
   server.use(http.patch(identityApiUrl('/users/me'), () => new HttpResponse(null, { status: 204 })))
   fireEvent.change(screen.getByLabelText('Bio'), { target: { value: 'Corrected draft' } })
   await user.click(screen.getByRole('button', { name: 'Save changes' }))
-  await screen.findByText('Profile saved.')
+  await screen.findByText('Profile saved.', {}, uiReady)
 })
 
 it('shows saved-unverified after acknowledged PATCH and reloads only GET, without resubmitting', async () => {
@@ -148,17 +151,17 @@ it('shows saved-unverified after acknowledged PATCH and reloads only GET, withou
   server.use(http.get(identityApiUrl('/users/me'), () => patched && reloadFails ? new HttpResponse(null, { status: 503 }) : HttpResponse.json({ ...wireFullProfile, full_name: patched ? 'Canonical saved name' : wireFullProfile.full_name })),
     http.patch(identityApiUrl('/users/me'), () => { patched = true; mutation(); return new HttpResponse(null, { status: 204 }) }))
   const { user } = renderProfilePage()
-  await user.click(await screen.findByRole('button', { name: 'Edit profile' }))
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
   fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Changed name' } })
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
-  await screen.findByText(/Your update was accepted/)
+  await screen.findByText(/Your update was accepted/, {}, uiReady)
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
   expect(screen.getByLabelText('Full name')).toHaveValue('Changed name')
   reloadFails = false
   await user.click(screen.getByRole('button', { name: 'Reload profile' }))
-  await screen.findByText('Your saved profile is now up to date.')
+  await screen.findByText('Your saved profile is now up to date.', {}, uiReady)
   expect(within(screen.getByRole('banner')).getByText('Canonical saved name')).toBeInTheDocument()
   expect(mutation).toHaveBeenCalledTimes(1)
 })
