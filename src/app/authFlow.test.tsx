@@ -198,6 +198,8 @@ it.each([
   await user.tab()
   expect(header.getByRole('link', { name: 'G11 LMS home' })).toHaveFocus()
   await user.tab()
+  expect(header.getByRole('link', { name: 'My profile' })).toHaveFocus()
+  await user.tab()
   expect(header.getByRole('button', { name: 'Sign Out' })).toHaveFocus()
   await user.click(header.getByRole('button', { name: 'Sign Out' }))
   expect(await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })).toBeInTheDocument()

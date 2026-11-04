@@ -40,7 +40,10 @@ export const router = createBrowserRouter([
           {
             path: "/",
             element: <AuthenticatedLayout />,
-            children: [{ index: true, element: <App /> }],
+            children: [
+              { index: true, element: <App /> },
+              { path: 'profile', lazy: async () => ({ Component: (await import('@/features/profile/pages/ProfilePage')).default }) },
+            ],
           },
         ],
       },

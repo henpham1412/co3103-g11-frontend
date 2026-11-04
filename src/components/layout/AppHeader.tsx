@@ -1,5 +1,5 @@
 import { Button, Tag } from 'antd'
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 
 export function AppHeader() {
@@ -21,7 +21,8 @@ export function AppHeader() {
           </div>
           <Tag color={user.status === 'ACTIVE' ? 'success' : 'default'} variant="solid">{user.status}</Tag>
         </div>
-        <Button onClick={() => { void logout('signed-out') }}>Sign Out</Button>
+        <NavLink className="app-profile-link" to="/profile">My profile</NavLink>
+        <Button className="app-sign-out" onClick={() => { void logout('signed-out') }}>Sign Out</Button>
       </div>
     </header>
   )

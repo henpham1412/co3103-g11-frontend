@@ -72,10 +72,15 @@
 }
 
 .app-brand:focus-visible,
+.app-profile-link:focus-visible,
 .app-header .ant-btn:focus-visible {
   outline: 2px solid #3459C7;
   outline-offset: 4px;
 }
+
+.app-profile-link { font-size: 14px; font-weight: 600; color: #3459C7; }
+.app-profile-link[aria-current="page"] { text-decoration: underline; text-underline-offset: 4px; }
+.app-header .app-sign-out { border-color: #FDA29B; color: #B42318; }
 
 .app-main {
   width: 100%;
