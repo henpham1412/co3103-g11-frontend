@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { invalidTextCases, profileTextCases } from '@/test/fixtures/invalidText'
+import { avatarUrlCases } from '@/test/fixtures/profileWire'
+import { profileFields } from '@/types/profile'
 import { isCalendarDate, isSafeAvatarUrl, localToday, validateDateOfBirth, validateProfileValue } from './profileValidation'
 
 it('validates real calendar dates with explicit local today and no invented age limit', () => {
@@ -18,7 +20,7 @@ describe.each(profileTextCases)('$field', ({ field, value }) => {
 })
 
 it('preserves Vietnamese, supplementary Unicode and multiline text', () => {
-  for (const field of ['fullName', 'bio', 'phoneNumber', 'locale', 'timezone'] as const) {
+  for (const field of ['fullName', 'bio', 'locale', 'timezone'] as const) {
     expect(validateProfileValue(field, 'Tiếng Việt e\u0301😀')).toBeUndefined()
   }
   expect(validateProfileValue('bio', ' Một dòng 😀\n\tDòng thứ hai\r\n ')).toBeUndefined()
@@ -28,14 +30,40 @@ it('preserves Vietnamese, supplementary Unicode and multiline text', () => {
 it.each(invalidTextCases)('rejects avatar $name before URL parsing can replace it', ({ character }) => {
   expect(isSafeAvatarUrl('https://example.com/' + character + '.png')).toBe(false)
 })
-it('limits avatars to absolute HTTP(S) without credentials or controls', () => {
-  for (const url of ['https://images.example/a.png', 'http://images.example/a?q=1']) expect(isSafeAvatarUrl(url)).toBe(true)
-  for (const url of ['javascript:alert(1)', 'data:image/png;base64,x', '//example/a', 'https:example/a', 'https://user:pass@example/a', 'https://example/a\n', ' https://example/a', 'not a URL']) expect(isSafeAvatarUrl(url)).toBe(false)
+it.each(avatarUrlCases)('checks avatar authority and safety: $value', ({ value, serialized }) => {
+  expect(isSafeAvatarUrl(value)).toBe(serialized !== null)
+  expect(validateProfileValue('avatarUrl', value) === undefined).toBe(serialized !== null)
 })
-it('preserves unconstrained profile strings but rejects invalid runtime types and blank writes', () => {
-  expect(validateProfileValue('phoneNumber', '+0012345')).toBeUndefined()
+it('preserves free text but rejects invalid runtime types and full name clearing', () => {
   expect(validateProfileValue('timezone', 'Existing custom timezone')).toBeUndefined()
   expect(validateProfileValue('bio', 'line one\nline two')).toBeUndefined()
   for (const value of ['', ' ', null, undefined, 12]) expect(validateProfileValue('fullName', value)).toBeDefined()
-  expect(validateProfileValue('bio', '')).toContain('Clearing')
+  for (const field of profileFields.filter(field => field !== 'fullName')) {
+    for (const value of [null, '', ' \t\n ']) expect(validateProfileValue(field, value)).toBeUndefined()
+    for (const value of [undefined, 12, {}, []]) expect(validateProfileValue(field, value)).toBeDefined()
+  }
+})
+
+it.each(['+84912345678', '+1234567', '+123456789012345'])('accepts E.164 phone %s', value => {
+  expect(validateProfileValue('phoneNumber', value)).toBeUndefined()
+})
+
+it.each(['not-a-phone', 'abc', '😀', '84912345678', '+0012345', '++84912345678', '+123456', '+1234567890123456', '+84 912345678', ' +84912345678', '+84912345678 ', '+１２３４５６７', '+84912345678\n'])('rejects non-E.164 phone %s', value => {
+  expect(validateProfileValue('phoneNumber', value)).toContain('E.164')
+})
+
+it('checks the phone storage cap before E.164 format at 30/31 UTF-16 units', () => {
+  expect(validateProfileValue('phoneNumber', '+' + '1'.repeat(29))).toContain('E.164')
+  expect(validateProfileValue('phoneNumber', '+' + '1'.repeat(30))).toBe('Phone number must not exceed 30 characters.')
+  expect(validateProfileValue('phoneNumber', '😀'.repeat(15) + '1')).toBe('Phone number must not exceed 30 characters.')
+})
+
+it.each([
+  { field: 'locale', limit: 20, label: 'Locale' },
+  { field: 'timezone', limit: 64, label: 'Timezone' },
+] as const)('enforces $field length using UTF-16 units', ({ field, limit, label }) => {
+  for (const value of ['a'.repeat(limit), '😀'.repeat(limit / 2)]) {
+    expect(validateProfileValue(field, value)).toBeUndefined()
+    expect(validateProfileValue(field, value + 'a')).toBe(`${label} must not exceed ${limit} characters.`)
+  }
 })

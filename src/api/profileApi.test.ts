@@ -2,6 +2,7 @@ import { AxiosError } from 'axios'
 import { http, HttpResponse } from 'msw'
 import { expect, it, vi } from 'vitest'
 import { authSession } from '@/test/fixtures/auth'
+import { wireProfileAcknowledgment } from '@/test/fixtures/profileWire'
 import { identityApiUrl, server } from '@/test/server'
 import { centralIdentityClient } from './centralIdentityClient'
 import { installAuthInterceptors, type SessionSnapshot } from './authInterceptors'
@@ -21,7 +22,7 @@ it.each([200, 204])('sends captured Bearer and flat diff to Central Identity wit
     http.patch(identityApiUrl('/users/me'), async ({ request }) => {
       expect(request.headers.get('authorization') === `Bearer ${session.accessToken}`).toBe(true)
       received(await request.json())
-      return status === 204 ? new HttpResponse(null, { status }) : HttpResponse.json({ arbitrary: true })
+      return status === 204 ? new HttpResponse(null, { status }) : HttpResponse.json(wireProfileAcknowledgment)
     }),
     http.get(identityApiUrl('/users/me'), () => { read(); return HttpResponse.json({}) }),
   )

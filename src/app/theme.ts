@@ -3,7 +3,7 @@ import type { ThemeConfig } from 'antd'
 // Partial override inherits parent typography, focus tokens and test motion setting.
 export const fe2Theme: ThemeConfig = {
   token: { colorPrimaryHover: '#2845A3', colorLinkHover: '#2845A3' },
-  components: { Input: { colorBorder: '#D0D5DD' } },
+  components: { Input: { colorBorder: '#667085' } },
 }
 
 export const authTheme: ThemeConfig = {

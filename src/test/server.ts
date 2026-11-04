@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { centralIdentityClient } from '@/api/centralIdentityClient'
 import { wireCurrentUser, wireLoginResponse, wireRegisteredUser } from './fixtures/authWire'
-import { wireForgotAcknowledgment } from './fixtures/passwordRecoveryWire'
+import { wireForgotAcknowledgment, wireResetAcknowledgment } from './fixtures/passwordRecoveryWire'
 import { wireProfileAcknowledgment } from './fixtures/profileWire'
 
 export const identityApiUrl = (path: string) =>
@@ -11,7 +11,7 @@ export const identityApiUrl = (path: string) =>
 export const handlers = [
   http.patch(identityApiUrl('/users/me'), () => HttpResponse.json(wireProfileAcknowledgment)),
   http.post(identityApiUrl('/auth/forgot-password'), () => HttpResponse.json(wireForgotAcknowledgment)),
-  http.post(identityApiUrl('/auth/reset-password'), () => new HttpResponse(null, { status: 204 })),
+  http.post(identityApiUrl('/auth/reset-password'), () => HttpResponse.json(wireResetAcknowledgment)),
   http.post(identityApiUrl('/auth/register'), () => HttpResponse.json(wireRegisteredUser, { status: 201 })),
   http.post(identityApiUrl('/auth/login'), () => HttpResponse.json(wireLoginResponse())),
   http.get(identityApiUrl('/users/me'), () => HttpResponse.json(wireCurrentUser)),

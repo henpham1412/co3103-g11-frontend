@@ -38,11 +38,25 @@ it('disables pristine/reverted saves and never submits an unchanged form', async
 
 it.each([
   ['Full name', ''], ['Avatar URL', 'javascript:alert(1)'], ['Date of birth', '9999-12-31'],
+  ['Phone number', 'not-a-phone'],
 ])('blocks invalid %s even when the form is submitted directly', async (label, value) => {
   const { save } = setup()
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   await waitFor(() => expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true'))
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(save).not.toHaveBeenCalled()
+})
+
+it.each([
+  { label: 'Phone number', max: 30 }, { label: 'Locale', max: 20 }, { label: 'Timezone', max: 64 },
+])('exposes the $label maxLength and blocks over-limit values even if injected', async ({ label, max }) => {
+  const { save } = setup()
+  expect(screen.getByLabelText(label)).toHaveAttribute('maxlength', String(max))
+  fireEvent.change(screen.getByLabelText(label), { target: { value: 'a'.repeat(max + 1) } })
+  fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
+  await screen.findByText(`${label} must not exceed ${max} characters.`)
+  expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true')
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
   expect(save).not.toHaveBeenCalled()
 })

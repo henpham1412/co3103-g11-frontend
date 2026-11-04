@@ -2,7 +2,8 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { expect, it, vi } from 'vitest'
 import { wireCurrentUser } from '@/test/fixtures/authWire'
-import { wireFullProfile } from '@/test/fixtures/profileWire'
+import { wireFullProfile, wireProfileAcknowledgment } from '@/test/fixtures/profileWire'
+import type { CurrentUserResponseDto } from '@/types/authWire'
 import { renderProfilePage } from '@/test/renderProfilePage'
 import { deferred, setAuthFields } from '@/test/renderAuthPage'
 import { identityApiUrl, server } from '@/test/server'
@@ -27,14 +28,14 @@ it('redirects anonymous entry to sign in, then loads the complete profile with B
   await screen.findByText('Learning together', {}, uiReady)
   expect(read).toHaveBeenCalledTimes(1)
   expect(screen.getByText('2001-03-15')).toBeInTheDocument()
-  expect(screen.getByText('+0012345')).toBeInTheDocument()
+  expect(screen.getByText('+84912345678')).toBeInTheDocument()
   expect(screen.getByText('vi-VN')).toBeInTheDocument()
   expect(screen.queryByText('UNEXPECTED ROLE')).not.toBeInTheDocument()
   expect(screen.getByText('Workspace connection information is not available yet.')).toBeInTheDocument()
   expect(screen.queryByText('No connected workspaces')).not.toBeInTheDocument()
 })
 
-it.each([undefined, null, {}, { bio: 'Only bio', date_of_birth: 'invalid', avatar_url: 'javascript:alert(1)' }])('renders incomplete profile safely', async profile => {
+it.each([undefined, null, {}, { bio: 'Only bio', date_of_birth: 'invalid', avatar_url: 'javascript:alert(1)' }, { avatar_url: 'https://example.com\\a.png' }, { avatar_url: 'https:///a.png' }])('renders incomplete profile safely', async profile => {
   server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...wireCurrentUser, profile })))
   renderProfilePage()
   const summary = await screen.findByRole('region', { name: 'Test Student' }, uiReady)
@@ -43,11 +44,12 @@ it.each([undefined, null, {}, { bio: 'Only bio', date_of_birth: 'invalid', avata
   expect(within(summary).queryByText('invalid')).not.toBeInTheDocument()
 })
 
-it('falls back once for a broken avatar and renders bio as plain text', async () => {
-  server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...wireFullProfile, profile: { ...wireFullProfile.profile, bio: '<b>plain text</b>' } })))
+it('normalizes avatar schemes, falls back for broken images and renders bio as plain text', async () => {
+  server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json({ ...wireFullProfile, profile: { ...wireFullProfile.profile, avatar_url: 'HTTPS://example.com/ảnh.png', bio: '<b>plain text</b>' } })))
   renderProfilePage()
   const image = await screen.findByRole('img', { name: "Test Student's avatar" }, uiReady)
   expect(image).toHaveAttribute('referrerpolicy', 'no-referrer')
+  expect(image).toHaveAttribute('src', 'https://example.com/ảnh.png')
   fireEvent.error(image)
   expect(screen.getByRole('img', { name: /avatar placeholder/ })).toBeInTheDocument()
   expect(screen.getByText('<b>plain text</b>').querySelector('b')).toBeNull()
@@ -77,7 +79,7 @@ it('routes a current profile 401 back to login', async () => {
 })
 
 it.each([
-  ['Bio', 'bio', 'New bio'], ['Full name', 'full_name', 'New name'], ['Phone number', 'phone_number', '+00999'],
+  ['Bio', 'bio', 'New bio'], ['Full name', 'full_name', 'New name'], ['Phone number', 'phone_number', '+84987654321'],
   ['Date of birth', 'date_of_birth', '2000-02-29'], ['Avatar URL', 'avatar_url', 'https://example.com/new.png'],
   ['Locale', 'locale', 'en-GB'], ['Timezone', 'timezone', 'Europe/London'],
 ])('saves only changed %s and uses the subsequent canonical GET', async (label, key, value) => {
@@ -91,7 +93,7 @@ it.each([
       const body = await request.json() as Record<string, string>
       mutations(body)
       canonical = { ...canonical, full_name: key === 'full_name' ? 'Canonical new name' : canonical.full_name, profile: { ...canonical.profile, ...(key !== 'full_name' ? { [key]: value } : {}) } }
-      return new HttpResponse(null, { status: 204 })
+      return HttpResponse.json(wireProfileAcknowledgment)
     }),
   )
   const { user } = renderProfilePage()
@@ -107,19 +109,64 @@ it.each([
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
 })
 
-it('cancels edits and prevents clearing existing optional fields without sending HTTP', async () => {
+it('cancels a pending optional-field clear without sending HTTP', async () => {
   server.use(http.get(identityApiUrl('/users/me'), () => HttpResponse.json(wireFullProfile)))
   const update = vi.spyOn(profileApi, 'updateCurrentUser')
   const { user } = renderProfilePage()
   await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
   fireEvent.change(screen.getByLabelText('Bio'), { target: { value: '' } })
-  await screen.findByText(/Clearing this field is not supported yet/)
-  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
   await user.click(screen.getByRole('button', { name: 'Cancel' }))
   expect(screen.getByText('Learning together')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Edit profile' }))
   expect(screen.getByLabelText('Bio')).toHaveValue('Learning together')
   expect(update).not.toHaveBeenCalled()
+})
+
+it.each([
+  ['Bio', 'bio'], ['Avatar URL', 'avatar_url'], ['Phone number', 'phone_number'],
+  ['Date of birth', 'date_of_birth'], ['Locale', 'locale'], ['Timezone', 'timezone'],
+] as const)('clears %s through PATCH null and displays the canonical empty value', async (label, key) => {
+  let canonical: CurrentUserResponseDto = structuredClone(wireFullProfile)
+  const mutations = vi.fn()
+  const order: string[] = []
+  server.use(
+    http.get(identityApiUrl('/users/me'), () => { order.push('GET'); return HttpResponse.json(canonical) }),
+    http.patch(identityApiUrl('/users/me'), async ({ request }) => {
+      order.push('PATCH')
+      mutations(await request.json())
+      canonical = { ...canonical, profile: { ...canonical.profile, [key]: null } }
+      return HttpResponse.json(wireProfileAcknowledgment)
+    }),
+  )
+  const { user } = renderProfilePage()
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
+  fireEvent.change(screen.getByLabelText(label, { exact: true }), { target: { value: '' } })
+  await user.click(screen.getByRole('button', { name: 'Save changes' }))
+  await screen.findByText('Profile saved.', {}, uiReady)
+  expect(mutations).toHaveBeenCalledExactlyOnceWith({ [key]: null })
+  expect(order.slice(-2)).toEqual(['PATCH', 'GET'])
+  const summary = within(screen.getByRole('region', { name: 'Test Student' }))
+  if (key === 'avatar_url') expect(summary.getByRole('img', { name: /avatar placeholder/ })).toBeInTheDocument()
+  else expect(summary.getByText(label, { selector: 'dt' }).nextElementSibling).toHaveTextContent('Not provided')
+  await user.click(screen.getByRole('button', { name: 'Edit profile' }))
+  expect(screen.getByLabelText(label, { exact: true })).toHaveValue('')
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+})
+
+it('omits all initially absent optional fields when another field is saved', async () => {
+  const mutation = vi.fn()
+  server.use(http.patch(identityApiUrl('/users/me'), async ({ request }) => {
+    mutation(await request.json())
+    return HttpResponse.json(wireProfileAcknowledgment)
+  }))
+  const { user } = renderProfilePage()
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Changed name' } })
+  await user.click(screen.getByRole('button', { name: 'Save changes' }))
+  await screen.findByText('Profile saved.', {}, uiReady)
+  expect(mutation).toHaveBeenCalledExactlyOnceWith({ full_name: 'Changed name' })
 })
 
 it.each([400, 422, 403, 0])('retains drafts with safe feedback after PATCH %s, then permits correction', async status => {

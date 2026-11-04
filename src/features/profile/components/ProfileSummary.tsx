@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import type { User } from '@/types/auth'
-import { isCalendarDate, isSafeAvatarUrl } from '../utils/profileValidation'
+import { isCalendarDate, isSafeAvatarUrl, normalizeAvatarUrl } from '../utils/profileValidation'
 
 function ProfileAvatar({ url, name }: { url?: string | null; name: string }) {
   const [failed, setFailed] = useState(false)
   const initials = name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join('').toUpperCase()
-  if (!failed && url && isSafeAvatarUrl(url)) return <img className="profile-avatar" src={url} alt={`${name}'s avatar`} referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+  if (!failed && url && isSafeAvatarUrl(url)) return <img className="profile-avatar" src={normalizeAvatarUrl(url)} alt={`${name}'s avatar`} referrerPolicy="no-referrer" onError={() => setFailed(true)} />
   return <span className="profile-avatar profile-initials" role="img" aria-label={`${name}'s avatar placeholder`}>{initials}</span>
 }
 

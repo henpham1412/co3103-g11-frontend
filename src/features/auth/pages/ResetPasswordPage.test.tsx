@@ -5,6 +5,7 @@ import { passwordRecoveryApi } from '@/api/passwordRecoveryApi'
 import { ApiError } from '@/api/apiError'
 import { centralIdentityClient } from '@/api/centralIdentityClient'
 import { authSession, errorEnvelope, validUser } from '@/test/fixtures/auth'
+import { wireResetAcknowledgment } from '@/test/fixtures/passwordRecoveryWire'
 import { deferred, renderAuthPage, setAuthFields } from '@/test/renderAuthPage'
 import { identityApiUrl, server } from '@/test/server'
 import { resetSuccessMessage } from '../utils/passwordRecoveryErrors'
@@ -38,7 +39,7 @@ describe('ResetPasswordPage', () => {
     const received = vi.fn()
     server.use(http.post(identityApiUrl('/auth/reset-password'), async ({ request }) => {
       received(await request.json())
-      return new HttpResponse(null, { status: 204 })
+      return HttpResponse.json(wireResetAcknowledgment)
     }))
     const { user, router } = renderAuthPage('/reset-password', undefined, { search: '?token=%ED%A0%80', integration: true, strict: true })
     await screen.findByText('This reset link contains an invalid token. Please enter the token from your email.', {}, { timeout: 5000 })
@@ -63,7 +64,7 @@ describe('ResetPasswordPage', () => {
     server.use(http.post(identityApiUrl('/auth/reset-password'), async ({ request }) => {
       expect(request.headers.has('authorization')).toBe(false)
       received(await request.json())
-      return new HttpResponse(null, { status: 204 })
+      return HttpResponse.json(wireResetAcknowledgment)
     }))
     const spies = ['log', 'warn', 'error', 'info', 'debug'].map(name => vi.spyOn(console, name as 'log').mockImplementation(() => {}))
     const { user, router } = renderAuthPage('/reset-password', undefined, { search: '?token=%2B%2525', strict: true, integration: true })

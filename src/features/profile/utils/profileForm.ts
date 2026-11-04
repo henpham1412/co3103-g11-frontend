@@ -16,12 +16,13 @@ export function buildProfileChanges(baseline: ProfileFormValues, values: Profile
   for (const field of profileFields) {
     if (!Object.hasOwn(values, field)) continue
     const raw: unknown = values[field]
-    const value = field === 'fullName' && typeof raw === 'string' ? raw.trim() : raw
-    const previous = field === 'fullName' ? baseline[field].trim() : baseline[field]
+    const value = typeof raw === 'string' ? (field === 'fullName' ? raw.trim() : raw.trim() ? raw : null) : raw
+    const previous = field === 'fullName' ? baseline[field].trim() : baseline[field].trim() ? baseline[field] : null
     if (value === previous) continue
     const error = validateProfileValue(field, value, today)
     if (error) errors[field] = error
-    else changes[field] = value as string
+    else if (field === 'fullName') changes.fullName = value as string
+    else changes[field] = value as string | null
   }
   if (Object.keys(errors).length) return { kind: 'invalid', errors }
   return Object.keys(changes).length ? { kind: 'changed', changes } : { kind: 'unchanged' }

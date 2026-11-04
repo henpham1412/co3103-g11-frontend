@@ -268,13 +268,16 @@ and cancels the previous request.
 Reset submits only `{ token, new_password }` to `/auth/reset-password`. The new
 password requires at least eight JavaScript characters, an ASCII uppercase letter,
 an ASCII lowercase letter, a digit and a Unicode punctuation/symbol character.
-Whitespace does not count as special. The inherited maximum is 72 UTF-8 bytes,
-pending confirmation of the complete CI policy. Confirmation must match exactly;
+Whitespace does not count as special. The maximum is 72 UTF-8 bytes, confirmed by
+CI-3's `ResetPasswordRequest` (which also specifies 8–128 UTF-16 units). The inspected
+backend does not enforce the frontend's complexity or NUL rejection. Confirmation must match exactly;
 passwords and opaque tokens are never trimmed or normalized. Login and registration
 retain their existing policies.
 
 `INVALID_OR_EXPIRED_RESET_TOKEN` produces safe feedback and a link to request again.
 Other errors use local copy, with allowlisted field binding for validation failures.
+CI-3 returns 200 `{ message }` for both recovery operations. For reset, the example
+body is `{ "message": "Password has been reset successfully. Please log in with your new password." }`.
 On success the form clears secrets. Anonymous visitors are taken to sign-in with a
 success message; an existing authenticated session is retained with a link to the
 profile. Reset does not sign in or sign out another account. Both recovery requests
@@ -290,7 +293,7 @@ still reaches hosting, so server access-log handling remains a deployment concer
 Profile entry calls the existing validated `GET /users/me` through
 `refreshCurrentUser(signal)`. A login response alone does not establish complete
 profile data. Missing/null fields show “Not provided”; avatars accept only absolute
-HTTP(S) URLs without credentials or control characters, use no referrer, and fall
+HTTP(S) URLs without credentials, backslashes, malformed authority or control characters, use no referrer, and fall
 back to initials on failure. Date-only values retain their calendar day.
 
 The editor supports exactly seven fields:
@@ -310,13 +313,25 @@ Email, user ID and status are read-only. `profileApi.updateCurrentUser` sends a 
 session's Bearer credential. A pristine or reverted form does not send a request.
 Full name is trimmed, nonblank, at most 150 characters and never null. DOB must be a
 real `YYYY-MM-DD` calendar date no later than local today; both the form and API
-serializer enforce it. Phone numbers remain strings and bio newlines are preserved.
-No undocumented locale/timezone whitelist or optional-field length cap is imposed.
+serializer enforce it. Phone numbers remain strings, must match E.164
+`^\+[1-9]\d{6,14}$` without whitespace, and have a storage cap of 30 UTF-16 units.
+Locale is limited to 20 and timezone to 64 UTF-16 units (`String.length`), with no
+locale/timezone whitelist. Shared validation protects both form and serializer;
+inputs also expose `maxLength`. E.164 limits valid phone values to at most 15 digits;
+CI-3's inspected DTO currently enforces length/Unicode but has no phone-format regex.
+Untouched legacy phones are omitted from updates. Bio newlines are preserved.
+Avatar schemes are lowercased before PATCH to satisfy Hibernate's `https?://.*`
+rule; path/query case and Unicode are preserved. Unsafe URLs are rejected in the
+form, serializer and avatar display.
 
-Nullable GET fields do not prove nullable writes. Until CI-3 specifies clearing,
-unchanged blank optional fields are omitted and clearing an existing value is
-blocked with guidance to enter a value or cancel. Flat PATCH and acknowledgment
-status assumptions are recorded in [the integration contracts](docs/fe-2-contracts.md).
+CI-3 supports explicit null clearing for all six optional fields: `bio`, `avatar_url`,
+`phone_number`, `date_of_birth`, `locale`, `timezone`. Clearing an existing value to
+blank/whitespace sends that key with `null`; initially absent/null/empty fields left
+blank remain omitted. Full name cannot be cleared. PATCH returns 200
+`{ "message": "Profile updated successfully", "updated_at": "2026-11-04T12:00:00Z" }`;
+the following GET supplies the canonical profile. Source evidence and known policy
+differences are recorded in [the integration contracts](docs/fe-2-contracts.md),
+checked against the CI-3 snapshot on 2026-11-04.
 
 **Cancel** discards local edits without HTTP. **Save changes** prevents duplicate
 submissions, sends PATCH, then loads canonical values with GET. Header/home update
@@ -336,11 +351,12 @@ stay unchanged. Existing tabs do not receive realtime profile synchronization.
 API-backed list. It does not imply zero memberships, infer roles, or offer fake
 connect/disconnect controls. A real integration needs a workspace API contract.
 
-FE-2 inherits Inter and the app theme, with scoped input border `#D0D5DD`, hover
+FE-2 inherits Inter and the app theme, with scoped input border `#667085`, hover
 `#2845A3`, 44px inputs and 12px cards. Login/register keep their contrast override
-`#8590A2`. The normal FE-2 input border is below 3:1 on white; text/focus contrast
-tests do not certify every control boundary. The provided design tokens have been
-used, but the Figma frames were not supplied for a direct visual comparison.
+`#8590A2`. The normal FE-2 input border has about 4.97:1 contrast on white `#FFFFFF`,
+exceeding WCAG SC 1.4.11's 3:1 minimum. Recovery and profile share this override;
+focus/error states and decorative card borders remain unchanged. Theme regression
+tests verify boundary contrast. Figma frames have not been directly compared.
 
 ## Testing
 
@@ -367,10 +383,11 @@ save/reload, expiry and account-switch races, and both persistence modes.
 Contract regressions cover registration without timestamps, nested login,
 optional profiles, malformed/legacy responses, and registration → login →
 provider remount/restore → logout in both persistence modes. These are MSW tests,
-not evidence of live backend compatibility. Central Identity must implement the
-DOC-05 `/users/me` response before live restoration can work; the legacy
-`{ id, fullName, role, ... }` response is deliberately unsupported. The backend
-DTO/profile change belongs in its own repository.
+not evidence of live backend compatibility. The inspected CI-3 snapshot implements
+the DOC-05 `/api/v1/users/me` response, nullable PATCH fields and 200 acknowledgments;
+the fixtures now reflect those contracts. The legacy `{ id, fullName, role, ... }`
+response is deliberately unsupported. Regression tests cover null clearing and
+omission, E.164, length boundaries, avatar URL normalization and control contrast.
 
 For production browser verification:
 
@@ -470,7 +487,7 @@ The approved project documents are maintained separately from source code:
 
 Refer to the approved documents and Figma designs before implementing new features.
 
-FE-2's implemented decisions and unresolved backend/design assumptions are in
+FE-2's verified contracts, known policy differences and live verification limits are in
 [docs/fe-2-contracts.md](docs/fe-2-contracts.md). The Issue #4 acceptance reconciliation
 belongs in the Pull Request description when a PR is opened; no separate acceptance
 report is committed to this repository.

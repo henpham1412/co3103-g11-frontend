@@ -1,6 +1,6 @@
 # FE-2 integration contracts
 
-Source: the supplied `FE-2_SPEC_AND_PLAN_PROMPT.md` and `FE-2_DETAILED_PLAN.md`, plus the existing FE-1 implementation. The complete CI-3/DOC-05 documents and Figma frames AUTH-03/AUTH-04 are not available in this repository. The assumptions below are explicit integration defaults, not verified backend behavior.
+Sources: DOC-01 through DOC-05 and the central identity backend specification. The contract definitions cover `UpdateProfileRequest`, `UserService`, `CurrentUserController`, `UpdateProfileResponse`, `ResetPasswordRequest` and `PasswordResetController`. These establish request/response shapes, null semantics and DTO limits; they do not establish live deployment behavior. Figma frames AUTH-03/AUTH-04 have not been directly compared.
 
 ## HTTP boundary
 
@@ -8,28 +8,34 @@ All paths use the existing Central Identity client (base URL already includes `/
 
 | Method/path | Request | Response handling |
 | --- | --- | --- |
-| POST `/auth/forgot-password` | `{ email }` (trimmed, lowercase) | Spec requires generic 200; ignore response body; identical local confirmation |
-| POST `/auth/reset-password` | `{ token, new_password }` | Accept transport 2xx acknowledgment; exact success status/body unspecified; non-2xx fails |
+| POST `/auth/forgot-password` | `{ email }` (trimmed, lowercase) | 200 `{ message }`; ignore body and show identical local confirmation |
+| POST `/auth/reset-password` | `{ token, new_password }` | 200 `{ message }`; acknowledgment only; non-2xx fails |
 | GET `/users/me` | No body | Existing validated identity/profile decoder; ACTIVE identity required |
-| PATCH `/users/me` | Changed writable fields at top level | Accept transport 2xx acknowledgment, then GET canonical user; exact status/body unspecified |
+| PATCH `/users/me` | Changed writable fields at top level | 200 `{ message, updated_at }`, then GET canonical user |
 
-Flat PATCH is a working assumption from the spec's writable field list. No nested `profile` request or inferred endpoint is introduced. PATCH success followed by GET failure is **saved-unverified**: reload only GET, never automatically repeat PATCH. Network/timeout mutation failures may have reached the server; explicit reload can reconcile them.
+CI-3 accepts a flat PATCH body, as defined by `UpdateProfileRequest`. PATCH success followed by GET failure is **saved-unverified**: reload only GET, never automatically repeat PATCH. Network/timeout mutation failures may have reached the server; explicit reload can reconcile them. Adapters also tolerate other successful 2xx acknowledgments; compatibility tests using 204 do not change the official 200 contract.
+
+Example PATCH response (200): `{"message":"Profile updated successfully","updated_at":"2026-11-04T12:00:00Z"}`. Example reset response (200): `{"message":"Password has been reset successfully. Please log in with your new password."}`. Neither response is decoded as a user profile.
 
 | UI field | Wire field | Write rule |
 | --- | --- | --- |
 | fullName | full_name | Required nonblank string, trimmed, max 150, no control characters (existing FE-1 policy); never null |
-| avatarUrl | avatar_url | Absolute HTTP(S), no credentials/control characters |
+| avatarUrl | avatar_url | Absolute HTTP(S); serialize scheme as lowercase `http://` or `https://`; reject backslashes, malformed/missing authority, credentials and whitespace/control characters; preserve path/query case and Unicode |
 | bio | bio | Plain text; preserve meaningful whitespace/newlines |
-| phoneNumber | phone_number | String; preserve leading zero and plus |
+| phoneNumber | phone_number | String, max 30 UTF-16 units; new values must match E.164 `^\+[1-9]\d{6,14}$`, with no whitespace; preserve the plus and digits exactly |
 | dateOfBirth | date_of_birth | Strict real calendar date YYYY-MM-DD, no later than local today at validation time |
-| locale | locale | String; no invented locale whitelist |
-| timezone | timezone | String; no invented timezone whitelist |
+| locale | locale | String, max 20 UTF-16 units; no locale whitelist |
+| timezone | timezone | String, max 64 UTF-16 units; no timezone whitelist |
 
-`userId/user_id`, email and status are read-only; no role or membership is inferred. Unknown keys never reach PATCH. Empty changes never send HTTP. Nullable GET fields do **not** establish nullable PATCH semantics: initial missing/null/empty values display blank, unchanged blanks are omitted, and clearing an existing optional value is blocked with guidance to supply a value or cancel. Until CI-3 confirms field-specific clearing, no null or blank optional writes are emitted. No undocumented phone/bio/URL length limits are imposed.
+`userId/user_id`, email and status are read-only; no role or membership is inferred. Unknown keys never reach PATCH. Empty changes never send HTTP. CI-3 explicitly supports null clearing for all six optional fields: `bio`, `avatar_url`, `phone_number`, `date_of_birth`, `locale`, `timezone`. Its DTO tracks supplied keys and its service applies explicit nulls. The editor converts an existing value changed to blank/whitespace into null (for example `{"bio":null}`); initially absent/null/empty fields left blank remain omitted. The serializer preserves explicit null and converts optional blank writes to null; `full_name` can never be cleared. Meaningful optional text is not trimmed.
+
+Form and serializer share validation. Length uses JavaScript `String.length`, matching Java UTF-16 length; `maxLength` is additional UI assistance. E.164 is required and enforced by the frontend; the backend phone DTO enforces length/Unicode, but has no E.164 regex. Thus a 30-character phone passes the storage cap but fails E.164, while 31 characters triggers the length error. Untouched legacy phone values remain omitted when other fields change and can be cleared. Bio and avatar have no invented length cap.
 
 ## Recovery policy and secrets
 
-Spec: at least eight characters, uppercase, lowercase, digit and special character. Implementation default: JavaScript length, ASCII uppercase/lowercase/digit, Unicode punctuation or symbol for special (whitespace/control does not qualify). The 72 UTF-8 byte maximum is inherited from FE-1, pending CI confirmation. Passwords and opaque reset tokens are never trimmed/normalized. Login/registration policy remains unchanged.
+Spec: at least eight characters, uppercase, lowercase, digit and special character. Implementation: JavaScript length, ASCII uppercase/lowercase/digit, Unicode punctuation or symbol for special (whitespace/control does not qualify). CI-3 `ResetPasswordRequest` confirms a 72 UTF-8 byte maximum and 8–128 UTF-16 units. For valid Unicode, the frontend's 72-byte maximum also keeps the value below 128 UTF-16 units. Passwords and opaque reset tokens are never trimmed/normalized. Login/registration policy remains unchanged.
+
+Known policy differences remain explicit: the inspected CI-3 reset DTO does not enforce the frontend's complexity or NUL rejection. CI-3 birth-date validation imposes a 1900-01-01 minimum and uses its validation clock; FE retains real positive-year dates through browser-local today per the FE-2 specification. This fix does not alter those policies or claim full accepted-value parity with the backend.
 
 URLSearchParams decodes token once. Missing/blank/duplicate token queries use manual entry; duplicates are not arbitrarily selected. Capture in component memory, replace URL without token, never copy secrets into navigation state/storage/links/logs. A new query invalidates the old operation. Refresh after scrub requires manual entry or reopening the email. `no-referrer` protects outgoing referrers; the initial URL still reaches hosting, whose access logs are outside frontend control.
 
@@ -41,13 +47,13 @@ Error diagnostics use allowlisted field aliases and local copy, never raw server
 
 Canonical profile refresh stays authenticated, uses independent cancellation/sequencing and validates session generation, ID, user ID and expiry before apply. It updates user/identity only in memory, preserves token/session ID/expiry/rememberMe/version, never rewrites persisted sessions or broadcasts profile data. Logout, expiry and account switch invalidate pending work. Profile synchronization across existing tabs is not promised.
 
-Use Inter and existing Ant Design layout. FE-2 scoped theme uses input border `#D0D5DD` and hover `#2845A3`; FE-1 retains its intentional contrast override `#8590A2`. Profile max width is 1000px; inputs 42–44px/radius 8, cards radius 12/border `#E4E8F0`. Text/focus contrast tests do not certify normal input-border contrast; the design border is below 3:1 on white and remains an explicit design/accessibility limitation. Figma has not been directly compared; no pixel-perfect claim.
+Use Inter and existing Ant Design layout. FE-2 scoped theme uses input border `#667085` on white `#FFFFFF` (about 4.97:1), exceeding WCAG SC 1.4.11's 3:1 control-boundary requirement. Both recovery and profile inherit this override through their existing ConfigProviders. Hover remains `#2845A3`; focus/error tokens and decorative card styling are unchanged. FE-1 retains `#8590A2`. Profile max width is 1000px; inputs 42–44px/radius 8, cards radius 12/border `#E4E8F0`. Theme tests check normal, focus and error boundary contrast while preserving existing text/focus checks. Figma has not been directly compared; no pixel-perfect claim.
 
 Connected Workspaces is an unavailable section, not an empty membership list or a fake API integration. A real list requires a service/endpoint/auth/schema contract. No connect/disconnect actions or global workspace role are fabricated.
 
 ## Verification boundary
 
-Local tests use literal MSW fixtures and do not prove live CI schema, CORS, email delivery, reset TTL/reuse/revocation, production SPA rewrites or Figma fidelity. Those checks require a provisioned test environment and remain separately identified. No credentials or raw request captures belong in evidence.
+Local tests use literal MSW fixtures matching the inspected CI-3 DTOs, including PATCH 200 `{ message, updated_at }`, reset 200 `{ message }` and canonical null profile values. Regression cases cover all six clears/omissions, full-name rejection, UTF-16 length boundaries, E.164, URL validation/serialization and input contrast. These tests do not prove live CORS, database writes, email delivery, reset TTL/reuse/revocation, production SPA rewrites or Figma fidelity. Those checks require a provisioned test environment. No credentials or raw request captures belong in evidence.
 
 ## Implemented integration points
 
@@ -57,4 +63,4 @@ Local tests use literal MSW fixtures and do not prove live CI schema, CORS, emai
 - [Profile orchestration](../src/features/profile/hooks/useProfile.ts) models loading/error, ready/editing, saving, saved-unverified and explicit reloading. It holds a canonical baseline, blocks duplicate mutations and never silently retries PATCH. [The editor](../src/features/profile/components/ProfileForm.tsx) keeps its draft across context rerenders and disables mutation/cancel while saving or awaiting confirmation.
 - [FE-2 scoped theme](../src/app/theme.ts) retains inherited typography/motion/focus tokens. Browser checks exercised responsive recovery and profile layouts, the 1000px maximum, 44px inputs, keyboard navigation, avatar fallback, token scrub/refresh fallback, no-referrer requests, canonical save and GET-only reconciliation using synthetic accounts and mocked HTTP. These checks do not substitute for the outstanding live backend/Figma validation above.
 
-No dependency, storage schema, backend contract, workspace endpoint, deployment or publishing change is introduced. The supplied plan/spec remain source inputs; the Issue #4 acceptance reconciliation is reserved for a future PR description, not a separate committed report.
+No dependency, storage schema, backend source, workspace endpoint, deployment or publishing change is introduced.
