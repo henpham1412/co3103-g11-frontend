@@ -6,6 +6,8 @@ import AppProviders from "./app/providers";
 import { router } from "./app/router";
 
 import "antd/dist/reset.css";
+import "@fontsource-variable/inter";
+import "@fontsource/ibm-plex-mono";
 import "./styles/global.css";
 
 createRoot(document.getElementById("root")!).render(
