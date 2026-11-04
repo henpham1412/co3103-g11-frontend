@@ -67,6 +67,6 @@ export default function ForgotPasswordPage() {
         <Button type="primary" htmlType="submit" block loading={submitting}>Send reset link</Button>
       </Form>
     </>}
-    <p className="auth-footer"><Link to="/login" state={{ from: returnDestination(navigation.from) }}>Back to sign in</Link></p>
+    <p className="auth-footer"><Link to="/reset-password">Enter a reset token</Link> · <Link to="/login" state={{ from: returnDestination(navigation.from) }}>Back to sign in</Link></p>
   </AuthLayout>
 }
