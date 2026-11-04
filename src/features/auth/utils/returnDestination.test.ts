@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { returnDestination } from './returnDestination'
 
 describe('returnDestination', () => {
+  it('blocks recovery destinations including encoded and normalized paths', () => {
+    for (const path of ['/forgot-password', '/reset-password?token=synthetic', '/RESET-PASSWORD/', '/x/../reset-password', '/%72eset-password', '/x%2f..%2freset-password']) expect(returnDestination(path)).toBe('/')
+    expect(returnDestination('/profile?tab=details')).toBe('/profile?tab=details')
+  })
   it("falls back for missing or malformed input", () => {
     for (const from of [undefined,
       null,

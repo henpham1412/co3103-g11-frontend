@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { PasswordChecklist } from './PasswordChecklist'
 
 describe('PasswordChecklist', () => {
+  it('uses the reset requirements without displaying the password', () => {
+    const { rerender } = render(<PasswordChecklist mode="reset" password="Ab1!abcd" />)
+    const list = screen.getByRole('list', { name: 'Password requirements' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(6)
+    expect(within(list).getAllByRole('listitem').every(item => item.dataset.state === 'met')).toBe(true)
+    expect(list).not.toHaveTextContent('Ab1!abcd')
+    rerender(<PasswordChecklist mode="reset" password="Ab1 abcd" />)
+    expect(within(list).getAllByRole('listitem')[4]).toHaveAttribute('data-state', 'pending')
+  })
   it('announces unmet rules, exact Unicode boundaries and clearing without disclosing the password', () => {
     const { rerender } = render(<PasswordChecklist />)
     const list = screen.getByRole('list', { name: 'Password requirements' })
