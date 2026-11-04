@@ -2,7 +2,10 @@
 
 The frontend of **A Self-Hosted Learning Platform with Centralized Authentication**.
 
-This application provides the web interface for Students, Tutors, and Administrators. It communicates with the Central Identity service for centralized authentication and account-related operations, and with an LMS Instance for class management, learning activities, progress tracking, and administration.
+This application implements central account registration/sign-in, password recovery,
+profile management and an authenticated home. It has separate Central Identity and
+LMS HTTP clients. Course, tutoring, progress and administration interfaces will be
+added as those LMS features are implemented.
 
 ## Technology Stack
 
@@ -150,7 +153,7 @@ optional `AbortSignal`. Only API fields are sent: `confirmPassword` and
 to that request. Response data is validated before use; login and current-user
 responses must represent an `ACTIVE` account. `ApiError` preserves business codes
 and supports the backend's `validationErrors`, `errors`, and `lockedUntil`
-extensions. DOC-05's optional `details` adapter is separate work.
+extensions, as well as allowlisted `details` diagnostics and snake_case validation maps.
 Transport failures have status `0`; malformed success bodies have status `502`
 and code `INVALID_AUTH_RESPONSE`.
 
@@ -200,8 +203,8 @@ and the validated local return destination. The destination survives navigation
 between the auth pages. External URLs, encoded separators/controls and return
 paths to the auth pages fall back to `/`. Leaving the login page cancels its
 pending authentication operation, preventing late responses from saving a session
-or redirecting through the public-route guard. Password recovery opens
-administrator guidance in a modal.
+or redirecting through the public-route guard. “Forgot password?” opens the public
+`/forgot-password` page, including when LMS sign-in configuration is missing.
 
 Form validators live in `src/features/auth/utils/authValidation.ts`. Identity
 fields are trimmed and email is lowercased on submission. Passwords are never
@@ -233,6 +236,112 @@ contrast thresholds. Input and checkbox borders use a darker component token;
 decorative card borders retain the layout token. Password visibility controls have
 a 24px target and a visible keyboard focus indicator.
 
+## Password Recovery and Profile (FE-2)
+
+| Route | Access | Behavior |
+|---|---|---|
+| `/forgot-password` | Public | AUTH-03 step 1: request reset instructions for a central account email |
+| `/reset-password` | Public | AUTH-03 step 2: set a new password using a URL token or manual entry |
+| `/profile` | Authenticated | AUTH-04: load, view and edit the current central profile, with a 1000px maximum layout |
+
+Recovery remains accessible while a previous session is restoring or has a restore
+error, and while another account is signed in. Session verification gates are on
+protected and public-only routes; `/profile` stays protected. The header's **My
+profile** link opens the profile page. Anonymous profile entry returns to that page
+after sign-in.
+
+### Requesting and using a reset link
+
+`passwordRecoveryApi.forgotPassword` posts only `{ email }` to Central Identity
+`/auth/forgot-password`. Email is trimmed and lowercased. Successful responses always
+show the same local confirmation: “If an account exists for this email, you will
+receive password reset instructions.” Server messages and account existence are
+not displayed; client tests do not establish backend timing guarantees.
+
+Open `/reset-password?token=...` from a reset email, or use **Enter a reset token**
+and paste the token manually. The query token is decoded once, captured in memory
+and removed from the current URL with a history replacement. Missing, blank or
+duplicate token parameters require manual entry. Refreshing the scrubbed URL also
+requires manual entry or reopening the email link. A new query starts a fresh form
+and cancels the previous request.
+
+Reset submits only `{ token, new_password }` to `/auth/reset-password`. The new
+password requires at least eight JavaScript characters, an ASCII uppercase letter,
+an ASCII lowercase letter, a digit and a Unicode punctuation/symbol character.
+Whitespace does not count as special. The inherited maximum is 72 UTF-8 bytes,
+pending confirmation of the complete CI policy. Confirmation must match exactly;
+passwords and opaque tokens are never trimmed or normalized. Login and registration
+retain their existing policies.
+
+`INVALID_OR_EXPIRED_RESET_TOKEN` produces safe feedback and a link to request again.
+Other errors use local copy, with allowlisted field binding for validation failures.
+On success the form clears secrets. Anonymous visitors are taken to sign-in with a
+success message; an existing authenticated session is retained with a link to the
+profile. Reset does not sign in or sign out another account. Both recovery requests
+use `skipAuth: true`, never send Authorization or LMS context, and their 401s do not
+purge an existing session.
+
+Reset tokens and passwords are never written to storage, router state, destination
+links or application logs. The document uses `no-referrer`; the initial reset URL
+still reaches hosting, so server access-log handling remains a deployment concern.
+
+### Viewing and saving a profile
+
+Profile entry calls the existing validated `GET /users/me` through
+`refreshCurrentUser(signal)`. A login response alone does not establish complete
+profile data. Missing/null fields show “Not provided”; avatars accept only absolute
+HTTP(S) URLs without credentials or control characters, use no referrer, and fall
+back to initials on failure. Date-only values retain their calendar day.
+
+The editor supports exactly seven fields:
+
+| Form field | PATCH key |
+|---|---|
+| Full name | `full_name` |
+| Avatar URL | `avatar_url` |
+| Bio | `bio` |
+| Phone number | `phone_number` |
+| Date of birth | `date_of_birth` |
+| Locale | `locale` |
+| Timezone | `timezone` |
+
+Email, user ID and status are read-only. `profileApi.updateCurrentUser` sends a flat
+`PATCH /users/me` containing only changed writable fields, using the captured
+session's Bearer credential. A pristine or reverted form does not send a request.
+Full name is trimmed, nonblank, at most 150 characters and never null. DOB must be a
+real `YYYY-MM-DD` calendar date no later than local today; both the form and API
+serializer enforce it. Phone numbers remain strings and bio newlines are preserved.
+No undocumented locale/timezone whitelist or optional-field length cap is imposed.
+
+Nullable GET fields do not prove nullable writes. Until CI-3 specifies clearing,
+unchanged blank optional fields are omitted and clearing an existing value is
+blocked with guidance to enter a value or cancel. Flat PATCH and acknowledgment
+status assumptions are recorded in [the integration contracts](docs/fe-2-contracts.md).
+
+**Cancel** discards local edits without HTTP. **Save changes** prevents duplicate
+submissions, sends PATCH, then loads canonical values with GET. Header/home update
+from that canonical response. PATCH failures retain the draft and never trigger an
+automatic retry. Network/timeout failures may already have reached the server;
+**Reload profile** explicitly replaces the draft with saved data.
+
+If PATCH succeeds but GET fails, the page says the update was accepted but could not
+be confirmed (`saved-unverified`). Save/Cancel remain locked and **Reload profile**
+retries GET alone. Cancellation, request ordering and session checks prevent late
+responses from modifying a new account's screen or resurrecting an expired session.
+Profile refresh leaves the protected shell mounted and updates identity/profile in
+memory only: session ID, token, expiry, remember-me mode, schema and persisted data
+stay unchanged. Existing tabs do not receive realtime profile synchronization.
+
+**Connected Workspaces** is currently an unavailable UI section/preview, not an
+API-backed list. It does not imply zero memberships, infer roles, or offer fake
+connect/disconnect controls. A real integration needs a workspace API contract.
+
+FE-2 inherits Inter and the app theme, with scoped input border `#D0D5DD`, hover
+`#2845A3`, 44px inputs and 12px cards. Login/register keep their contrast override
+`#8590A2`. The normal FE-2 input border is below 3:1 on white; text/focus contrast
+tests do not certify every control boundary. The provided design tokens have been
+used, but the Figma frames were not supplied for a direct visual comparison.
+
 ## Testing
 
 Vitest uses jsdom and the `@/` alias for `src/`. The setup in `src/test/setup.ts`
@@ -244,7 +353,16 @@ snake_case HTTP fixtures live in `src/test/fixtures/authWire.ts`. CamelCase
 fixtures in `src/test/fixtures/auth.ts` are for internal API mocks and storage. Override
 handlers in individual tests with `server.use(...)`. UI setup stubs standalone
 mode before each test; LMS tests override all context variables explicitly, so
-local deployment settings do not affect the suite. No live backend is required.
+local deployment settings do not affect the suite. jsdom also stubs ResizeObserver
+for Ant Design textareas; it does not simulate layout measurements. No live backend
+is required.
+
+Vitest has four projects: `unit` (pure helpers), `storage`, `api` (MSW transport)
+and `ui` (React Testing Library). FE-2 fixtures are in
+`src/test/fixtures/passwordRecoveryWire.ts` and `profileWire.ts`. Recovery/profile
+journeys render the real router, provider and clients. They cover wire allowlists,
+public auth isolation, secret-free feedback, query/manual token flows, canonical
+save/reload, expiry and account-switch races, and both persistence modes.
 
 Contract regressions cover registration without timestamps, nested login,
 optional profiles, malformed/legacy responses, and registration → login →
@@ -272,7 +390,10 @@ PowerShell):
 
 ```bash
 curl -i -X OPTIONS http://localhost:8080/api/v1/auth/login -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type"
-curl -i -X OPTIONS http://localhost:8081/api/v1/users/me -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization"
+curl -i -X OPTIONS http://localhost:8080/api/v1/users/me -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization"
+curl -i -X OPTIONS http://localhost:8080/api/v1/auth/forgot-password -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type"
+curl -i -X OPTIONS http://localhost:8080/api/v1/auth/reset-password -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type"
+curl -i -X OPTIONS http://localhost:8080/api/v1/users/me -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: PATCH" -H "Access-Control-Request-Headers: authorization,content-type"
 ```
 
 Expect a successful HTTP response, `Access-Control-Allow-Origin:
@@ -287,7 +408,11 @@ in two tabs, with remember-me on and off, and in both LMS and standalone modes.
 Verify invalid client/redirect responses keep the user on login without a saved
 session. Use a dedicated test account and a provisioned test client; never save
 passwords or tokens in verification logs. Vitest/MSW results do not prove browser
-CORS or live backend compatibility.
+CORS or live backend compatibility. Separately verify reset email delivery, token
+expiry/reuse/revocation and the deployed CI PATCH schema with dedicated test accounts.
+Production hosting must serve the SPA entry for direct `/forgot-password`,
+`/reset-password` and `/profile` navigation. Vite preview alone does not establish
+that hosting rewrite configuration.
 
 Central Identity must enforce the complete client/redirect pair and exact URI
 allowlist before issuing a JWT, and echo the validated client. The backend
@@ -304,25 +429,17 @@ interaction test also verifies the Testing Library/user-event integration.
 
 ```text
 src/
-├── app/                     # App setup, routing, providers
-├── api/                     # HTTP configuration and API clients
-├── components/
-│   ├── common/              # Shared reusable components
-│   └── layout/              # Shared application layouts
+├── app/                     # Router, providers, theme, home and integration tests
+├── api/                     # Central Identity/LMS clients, adapters and wire mapping
+├── components/layout/       # Shared auth and authenticated layouts
 ├── features/
-│   ├── auth/
-│   ├── account/
-│   ├── dashboard/
-│   ├── classes/
-│   ├── learning-content/
-│   ├── assessment/
-│   ├── learning-progress/
-│   ├── adaptive-learning/
-│   ├── interaction-notifications/
-│   └── administration/
-├── hooks/                   # Shared React hooks
-├── styles/                  # Global styles
-├── utils/                   # Shared utilities
+│   ├── auth/                # Session lifecycle, login/register and recovery
+│   └── profile/             # Profile form, overview, orchestration and validation
+├── hooks/                   # Shared useAuth hook
+├── styles/                  # Global, app and profile styles
+├── test/                    # MSW server, fixtures and render helpers
+├── types/                   # UI/session models and explicit wire DTOs
+├── utils/                   # Type guards and expiry helpers
 └── main.tsx                 # Application entry point
 ```
 
@@ -352,6 +469,11 @@ The approved project documents are maintained separately from source code:
 - DOC-07 — Development Setup
 
 Refer to the approved documents and Figma designs before implementing new features.
+
+FE-2's implemented decisions and unresolved backend/design assumptions are in
+[docs/fe-2-contracts.md](docs/fe-2-contracts.md). The Issue #4 acceptance reconciliation
+belongs in the Pull Request description when a PR is opened; no separate acceptance
+report is committed to this repository.
 
 ## Development Notes
 

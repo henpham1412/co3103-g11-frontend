@@ -48,3 +48,13 @@ Connected Workspaces is an unavailable section, not an empty membership list or 
 ## Verification boundary
 
 Local tests use literal MSW fixtures and do not prove live CI schema, CORS, email delivery, reset TTL/reuse/revocation, production SPA rewrites or Figma fidelity. Those checks require a provisioned test environment and remain separately identified. No credentials or raw request captures belong in evidence.
+
+## Implemented integration points
+
+- [Recovery API](../src/api/passwordRecoveryApi.ts) and [profile API](../src/api/profileApi.ts) reuse the existing Central Identity transport, cancellation, redirect policy and error normalizer. They consume acknowledgment only; GET remains the sole canonical user decoder.
+- [Reset token hook](../src/features/auth/hooks/useResetToken.ts) preserves the token across its own URL replacement and StrictMode replay; a new navigation starts a new form, and leaving/remounting the scrubbed route requires manual entry. The initial hosting request cannot be scrubbed retroactively.
+- [AuthProvider](../src/features/auth/context/AuthProvider.tsx) exposes stable `refreshCurrentUser(signal)` with a separate controller/sequence and verified-session guard. Profile failures remain local, except current-session 401 or decoded inactive-account responses, which use the existing session purge lifecycle.
+- [Profile orchestration](../src/features/profile/hooks/useProfile.ts) models loading/error, ready/editing, saving, saved-unverified and explicit reloading. It holds a canonical baseline, blocks duplicate mutations and never silently retries PATCH. [The editor](../src/features/profile/components/ProfileForm.tsx) keeps its draft across context rerenders and disables mutation/cancel while saving or awaiting confirmation.
+- [FE-2 scoped theme](../src/app/theme.ts) retains inherited typography/motion/focus tokens. Browser checks exercised responsive recovery and profile layouts, the 1000px maximum, 44px inputs, keyboard navigation, avatar fallback, token scrub/refresh fallback, no-referrer requests, canonical save and GET-only reconciliation using synthetic accounts and mocked HTTP. These checks do not substitute for the outstanding live backend/Figma validation above.
+
+No dependency, storage schema, backend contract, workspace endpoint, deployment or publishing change is introduced. The supplied plan/spec remain source inputs; the Issue #4 acceptance reconciliation is reserved for a future PR description, not a separate committed report.
