@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { defaultExclude, defineConfig } from 'vitest/config'
 
 const pureTests = [
+  'src/features/profile/utils/*.test.ts', 'src/api/profileMapping.test.ts',
   'src/api/passwordRecoveryMapping.test.ts',
   'src/features/auth/utils/*.test.ts', 'src/utils/*.test.ts',
   'src/api/apiError.test.ts', 'src/api/clients.test.ts', 'src/api/authMapping.test.ts', 'src/app/theme.test.ts',
