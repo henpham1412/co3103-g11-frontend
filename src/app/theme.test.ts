@@ -1,6 +1,6 @@
 import { theme } from 'antd'
 import { describe, expect, it } from 'vitest'
-import { authTheme } from './theme'
+import { authTheme, fe2Theme } from './theme'
 
 function luminance(color: string) {
   const components = color.startsWith('#')
@@ -15,6 +15,12 @@ function luminance(color: string) {
 }
 
 describe('auth theme contrast', () => {
+  it('scopes FE-2 design overrides while preserving inherited motion and FE-1 borders', () => {
+    expect(fe2Theme.token?.colorPrimaryHover).toBe('#2845A3')
+    expect(fe2Theme.components?.Input?.colorBorder).toBe('#D0D5DD')
+    expect(fe2Theme.token).not.toHaveProperty('motion')
+    expect(authTheme.components?.Input?.colorBorder).toBe('#8590A2')
+  })
   const tokens = theme.getDesignToken(authTheme)
 
   it("all six text tokens meet WCAG AA on the form surface", () => {

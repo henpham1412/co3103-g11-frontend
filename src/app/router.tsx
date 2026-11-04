@@ -27,6 +27,10 @@ export const router = createBrowserRouter([
     ),
     children: [
       {
+        path: '/forgot-password',
+        lazy: async () => ({ Component: (await import('@/features/auth/pages/ForgotPasswordPage')).default }),
+      },
+      {
         element: <ProtectedRoute />,
         children: [
           {

@@ -5,18 +5,20 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import AppProviders from '@/app/providers'
 import LoginPage from '@/features/auth/pages/LoginPage'
 import RegisterPage from '@/features/auth/pages/RegisterPage'
+import ForgotPasswordPage from '@/features/auth/pages/ForgotPasswordPage'
 import { AuthContext, type AuthState } from '@/features/auth/context/AuthContext'
 import { authApi } from '@/api/authApi'
 import { authTheme } from '@/app/theme'
 import { authSession } from './fixtures/auth'
 import AuthTestMotion from './AuthTestMotion'
 
-export function renderAuthPage(path: '/login' | '/register', state?: unknown, options: { integration?: boolean; authState?: AuthState } = {}) {
+export function renderAuthPage(path: '/login' | '/register' | '/forgot-password', state?: unknown, options: { integration?: boolean; authState?: AuthState } = {}) {
   localStorage.clear()
   sessionStorage.clear()
   const router = createMemoryRouter([
     { path: '/login', element: <LoginPage /> },
     { path: '/register', element: <RegisterPage /> },
+    { path: '/forgot-password', element: <ForgotPasswordPage /> },
     { path: '*', element: <p>Destination page</p> },
   ], { initialEntries: ['/before', { pathname: path, state }], initialIndex: 1 })
   const user = userEvent.setup()
