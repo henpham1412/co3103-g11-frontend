@@ -33,8 +33,10 @@ export function isSafeAvatarUrl(value: string): boolean {
   // empty ports or percent-encoded host names. IPv6 syntax is checked by URL.
   const authority = /^https?:\/\/(?:\[[\da-f:.]+\]|[^/?#:@%[\]]+)(?::\d+)?(?=[/?#]|$)/i.exec(value)
   if (!authority) return false
-  // Brackets belong only to an IPv6 host; a fragment cannot contain another '#'.
-  if (/[[\]]|#.*#/u.test(value.slice(authority[0].length))) return false
+  // Check components in the original text: WHATWG parsing can escape a bad path.
+  // Hibernate accepts brackets in query/fragment, but not in the path.
+  const components = /^([^?#]*)(?:\?[^#]*)?(?:#[^#]*)?$/u.exec(value.slice(authority[0].length))
+  if (!components || /[[\]]/u.test(components[1])) return false
   try {
     const url = new URL(value)
     return ['http:', 'https:'].includes(url.protocol) && !!url.hostname && !url.username && !url.password

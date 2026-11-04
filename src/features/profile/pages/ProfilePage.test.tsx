@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { expect, it, vi } from 'vitest'
 import { wireCurrentUser } from '@/test/fixtures/authWire'
-import { wireFullProfile, wireProfileAcknowledgment } from '@/test/fixtures/profileWire'
+import { bracketAvatarUrls, wireFullProfile, wireProfileAcknowledgment } from '@/test/fixtures/profileWire'
 import type { CurrentUserResponseDto } from '@/types/authWire'
 import { renderProfilePage } from '@/test/renderProfilePage'
 import { deferred, setAuthFields } from '@/test/renderAuthPage'
@@ -144,6 +144,37 @@ it('blocks an invalid avatar and valid bio before PATCH, then saves the correcte
   await screen.findByText('Profile saved.', {}, uiReady)
   expect(mutations).toHaveBeenCalledExactlyOnceWith({ avatar_url: corrected, bio: 'Valid draft bio' })
   expect(screen.getByRole('img', { name: "Test Student's avatar" })).toHaveAttribute('src', corrected)
+})
+
+it.each(bracketAvatarUrls)('saves and displays an avatar with query or fragment brackets: %s', async value => {
+  let canonical = structuredClone(wireFullProfile)
+  const mutations = vi.fn()
+  const order: string[] = []
+  server.use(
+    http.get(identityApiUrl('/users/me'), () => { order.push('GET'); return HttpResponse.json(canonical) }),
+    http.patch(identityApiUrl('/users/me'), async ({ request }) => {
+      order.push('PATCH')
+      mutations(await request.json())
+      canonical = { ...canonical, profile: { ...canonical.profile, avatar_url: value } }
+      return HttpResponse.json(wireProfileAcknowledgment)
+    }),
+  )
+  const { user } = renderProfilePage()
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
+  const avatar = screen.getByLabelText('Avatar URL')
+  const save = screen.getByRole('button', { name: 'Save changes' })
+  expect(save).toBeDisabled()
+  fireEvent.change(avatar, { target: { value } })
+  expect(save).toBeEnabled()
+  await user.click(save)
+  await screen.findByText('Profile saved.', {}, uiReady)
+  expect(mutations).toHaveBeenCalledExactlyOnceWith({ avatar_url: value })
+  expect(order.slice(-2)).toEqual(['PATCH', 'GET'])
+  expect(screen.getByRole('img', { name: "Test Student's avatar" })).toHaveAttribute('src', value)
+  expect(screen.queryByRole('img', { name: /avatar placeholder/ })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Edit profile' }))
+  expect(screen.getByLabelText('Avatar URL')).toHaveValue(value)
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
 })
 
 it('cancels a pending optional-field clear without sending HTTP', async () => {

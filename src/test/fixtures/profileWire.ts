@@ -9,7 +9,17 @@ export const wireFullProfile = {
 }
 export const wireProfileAcknowledgment = { message: 'Profile updated successfully', updated_at: '2026-11-04T12:00:00Z' }
 
+export const bracketAvatarUrls = [
+  'https://example.com/a.png?size[width]=100',
+  'https://example.com/a.png#preview[1]',
+  'https://example.com/a.png?size[width]=100#preview[1]',
+  'https://example.com?size[width]=100',
+  'https://example.com#preview[1]',
+  'http://[::1]:8080/a.png?size[width]=100#preview[1]',
+]
+
 export const avatarUrlCases = [
+  ...bracketAvatarUrls.map(value => ({ value, serialized: value })),
   { value: 'https://images.example/a.png', serialized: 'https://images.example/a.png' },
   { value: 'http://images.example/a?q=1', serialized: 'http://images.example/a?q=1' },
   { value: 'HTTP://Example.com/A.png?Q=Value#Part', serialized: 'http://Example.com/A.png?Q=Value#Part' },
@@ -26,7 +36,18 @@ export const avatarUrlCases = [
     'http://example.com', 'https://example.com?avatar=1', 'https://example.com#avatar',
     'https://example.com/a?#',
   ].map(value => ({ value, serialized: value })),
-  ...['{', '}', '|', '^', '"', '<', '>', '\\', '[', ']', '`', '%', '%2', '%zz', '%2G', '%G2', '%ＦＦ'].flatMap(character => [
+  ...['[', ']'].flatMap(character => [
+    `https://example.com/a.png?size=${character}`,
+    `https://example.com/a.png#preview${character}`,
+  ]).map(value => ({ value, serialized: value })),
+  ...['[', ']'].flatMap(character => [
+    `https://exam${character}ple.com/a.png`,
+    `https://example.com:4${character}43/a.png`,
+    `https://example.com/a${character}z.png`,
+    `https://example.com/a${character}z.png?size[width]=100#preview[1]`,
+    `https://[::1]/a${character}z.png?size[width]=100#preview[1]`,
+  ]).map(value => ({ value, serialized: null })),
+  ...['{', '}', '|', '^', '"', '<', '>', '\\', '`', ' ', '\t', '\n', '\r', '\u0000', '\u0001', '%', '%2', '%zz', '%2G', '%G2', '%ＦＦ'].flatMap(character => [
     `https://example.com/a${character}z.png`,
     `https://example.com/a?q=a${character}z`,
     `https://example.com/a#part${character}z`,

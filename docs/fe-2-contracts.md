@@ -20,7 +20,7 @@ Example PATCH response (200): `{"message":"Profile updated successfully","update
 | UI field | Wire field | Write rule |
 | --- | --- | --- |
 | fullName | full_name | Required nonblank string, trimmed, max 150, no control characters (existing FE-1 policy); never null |
-| avatarUrl | avatar_url | Absolute HTTP(S); serialize scheme as lowercase `http://` or `https://`; reject backslashes, malformed/missing authority, credentials and whitespace/control characters; preserve path/query case and Unicode |
+| avatarUrl | avatar_url | Absolute HTTP(S); serialize scheme as lowercase `http://` or `https://`; reject backslashes, malformed/missing authority, credentials and whitespace/control characters; allow literal brackets in query/fragment and IPv6 hosts, reject them in paths or other authority positions; preserve path/query/fragment case and Unicode |
 | bio | bio | Plain text; preserve meaningful whitespace/newlines |
 | phoneNumber | phone_number | String, max 30 UTF-16 units; new values must match E.164 `^\+[1-9]\d{6,14}$`, with no whitespace; preserve the plus and digits exactly |
 | dateOfBirth | date_of_birth | Strict real calendar date YYYY-MM-DD, no later than local today at validation time |
@@ -35,7 +35,7 @@ Form and serializer share validation. Length uses JavaScript `String.length`, ma
 
 Spec: at least eight characters, uppercase, lowercase, digit and special character. Implementation: JavaScript length, ASCII uppercase/lowercase/digit, Unicode punctuation or symbol for special (whitespace/control does not qualify). CI-3 `ResetPasswordRequest` confirms a 72 UTF-8 byte maximum and 8–128 UTF-16 units. For valid Unicode, the frontend's 72-byte maximum also keeps the value below 128 UTF-16 units. Passwords and opaque reset tokens are never trimmed/normalized. Login/registration policy remains unchanged.
 
-Known policy differences remain explicit: the inspected CI-3 reset DTO does not enforce the frontend's complexity or NUL rejection. CI-3 birth-date validation imposes a 1900-01-01 minimum and uses its validation clock; FE retains real positive-year dates through browser-local today per the FE-2 specification. This fix does not alter those policies or claim full accepted-value parity with the backend.
+Known policy differences remain explicit: the inspected CI-3 reset DTO does not enforce the frontend's complexity or NUL rejection. CI-3 birth-date validation accepts real calendar dates no later than today according to its validation clock, with no minimum date or year (including year 0000 and dates before 1900-01-01); FE retains real positive-year YYYY-MM-DD dates through browser-local today per the FE-2 specification. These year-range and clock differences remain; full accepted-value parity with the backend is not claimed.
 
 URLSearchParams decodes token once. Missing/blank/duplicate token queries use manual entry; duplicates are not arbitrarily selected. Capture in component memory, replace URL without token, never copy secrets into navigation state/storage/links/logs. A new query invalidates the old operation. Refresh after scrub requires manual entry or reopening the email. `no-referrer` protects outgoing referrers; the initial URL still reaches hosting, whose access logs are outside frontend control.
 
