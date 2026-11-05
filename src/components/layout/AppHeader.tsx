@@ -25,7 +25,8 @@ export function AppHeader() {
   const isProfile = useMatch('/profile') !== null
   if (state.status !== 'authenticated') return null
   const { user } = state
-  const role = ('role' in user && typeof user.role === 'string' ? user.role.trim().toUpperCase() : '') || 'STUDENT'
+  const rawRole = ('role' in user && typeof user.role === 'string' ? user.role.trim() : '') || 'Student'
+  const role = rawRole.charAt(0).toUpperCase() + rawRole.slice(1).toLowerCase()
   const profileLabel = `${user.fullName} - ${role}`
   const items: MenuProps['items'] = [
     {

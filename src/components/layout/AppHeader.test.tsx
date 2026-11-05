@@ -30,7 +30,7 @@ it.each([undefined, 'HTTPS://example.com/avatar.png', 'javascript:alert(1)'])('s
   expect(profileButton).toHaveAttribute('type', 'button')
   expect(profileButton).toHaveAttribute('aria-haspopup', 'menu')
   expect(profileButton).toHaveAttribute('aria-expanded', 'false')
-  expect(within(profileButton).getByText('Alex Morgan - STUDENT')).toHaveAttribute('title', 'Alex Morgan - STUDENT')
+  expect(within(profileButton).getByText('Alex Morgan - Student')).toHaveAttribute('title', 'Alex Morgan - Student')
   expect(profileButton.querySelector('svg[data-icon="down"]')).toBeInTheDocument()
   expect(profileButton.querySelector('.app-profile-chevron')).toHaveAttribute('aria-hidden', 'true')
   expect(screen.queryByRole('menu')).not.toBeInTheDocument()
@@ -112,16 +112,16 @@ it('opens with Space and dismisses with Escape, restoring focus to the trigger',
 })
 
 it.each([
-  ['STUDENT', 'STUDENT'],
-  ['ADMINISTRATOR', 'ADMINISTRATOR'],
-  ['TUTOR', 'TUTOR'],
-  [' tutor ', 'TUTOR'],
-  [undefined, 'STUDENT'],
-  [null, 'STUDENT'],
-  ['', 'STUDENT'],
-  ['   ', 'STUDENT'],
-  [123, 'STUDENT'],
-])('shows the uppercase role or student fallback (role: %s)', (role, expectedRole) => {
+  ['STUDENT', 'Student'],
+  ['ADMINISTRATOR', 'Administrator'],
+  ['TUTOR', 'Tutor'],
+  [' tutor ', 'Tutor'],
+  [undefined, 'Student'],
+  [null, 'Student'],
+  ['', 'Student'],
+  ['   ', 'Student'],
+  [123, 'Student'],
+])('shows the title case role or student fallback (role: %s)', (role, expectedRole) => {
   const account = { ...validUser, fullName: 'Alex Morgan', role }
   renderHeader(account)
   expect(screen.getByRole('button', { name: 'My profile' })).toHaveTextContent(`Alex Morgan - ${expectedRole}`)

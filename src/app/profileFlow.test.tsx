@@ -67,7 +67,7 @@ it.each([false, true])('logs in, updates three fields, synchronizes home/header,
   await view.user.click(screen.getByRole('button', { name: 'Save Changes' }))
   await screen.findByText('Profile saved.', {}, uiReady)
   expect(received).toHaveBeenCalledExactlyOnceWith({ full_name: 'Updated Student', bio: 'A revised biography', date_of_birth: '2000-02-29' })
-  expect(within(screen.getByRole('banner')).getByText('Canonical Student - STUDENT')).toBeInTheDocument()
+  expect(within(screen.getByRole('banner')).getByText('Canonical Student - Student')).toBeInTheDocument()
   expect((rememberMe ? localStorage : sessionStorage).getItem(AUTH_SESSION_KEY) === raw).toBe(true)
   await view.user.click(screen.getByRole('link', { name: 'G11 LMS home' }))
   await screen.findByRole('heading', { name: 'Welcome, Canonical Student' }, uiReady)
@@ -103,7 +103,7 @@ it('reconciles a partially successful save through GET alone with real provider/
   await screen.findByText('Your saved profile is now up to date.', {}, uiReady)
   expect(reads).toBe(before + 1)
   expect(patches).toBe(1)
-  expect(within(screen.getByRole('banner')).getByText('Saved canonical - STUDENT')).toBeInTheDocument()
+  expect(within(screen.getByRole('banner')).getByText('Saved canonical - Student')).toBeInTheDocument()
 })
 
 it.each([200, 401])('protects a replacement account from a delayed PATCH response (%s)', async status => {
@@ -132,7 +132,7 @@ it.each([200, 401])('protects a replacement account from a delayed PATCH respons
   await screen.findByText('Replacement profile', {}, uiReady)
   const before = newReads
   await act(async () => pending.resolve(new HttpResponse(null, { status })))
-  await waitFor(() => expect(within(screen.getByRole('banner')).getByText('Replacement Student - STUDENT')).toBeInTheDocument(), uiReady)
+  await waitFor(() => expect(within(screen.getByRole('banner')).getByText('Replacement Student - Student')).toBeInTheDocument(), uiReady)
   expect(tokenStorage.getSession()?.sessionId).toBe(replacement.sessionId)
   expect(newReads).toBe(before)
   expect(screen.queryByText('Profile saved.')).not.toBeInTheDocument()
