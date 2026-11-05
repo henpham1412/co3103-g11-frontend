@@ -246,9 +246,9 @@ a 24px target and a visible keyboard focus indicator.
 
 Recovery remains accessible while a previous session is restoring or has a restore
 error, and while another account is signed in. Session verification gates are on
-protected and public-only routes; `/profile` stays protected. The header's **My
-profile** link opens the profile page. Anonymous profile entry returns to that page
-after sign-in.
+protected and public-only routes; `/profile` stays protected. The header's avatar
+and full name link opens the profile page. Sign Out is in the profile summary card.
+Anonymous profile entry returns to that page after sign-in.
 
 ### Requesting and using a reset link
 
@@ -347,9 +347,9 @@ Profile refresh leaves the protected shell mounted and updates identity/profile 
 memory only: session ID, token, expiry, remember-me mode, schema and persisted data
 stay unchanged. Existing tabs do not receive realtime profile synchronization.
 
-**Connected Workspaces** is currently an unavailable UI section/preview, not an
-API-backed list. It does not imply zero memberships, infer roles, or offer fake
-connect/disconnect controls. A real integration needs a workspace API contract.
+The profile sidebar contains **Security & Sessions** and **Password Recovery**.
+The mock Connected LMS Workspaces card and examples have been removed. A real
+workspace integration needs a workspace API contract.
 
 FE-2 inherits Inter and the app theme, with scoped input border `#667085`, hover
 `#2845A3`, 44px inputs and 12px cards. Login/register keep their contrast override

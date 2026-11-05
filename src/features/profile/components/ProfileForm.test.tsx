@@ -20,13 +20,13 @@ it('disables Save and focuses local feedback for invalid text', async () => {
   await screen.findByText('Please remove invalid characters from this value.', {}, { timeout: 5000 })
   await waitFor(() => expect(screen.getByLabelText('Bio')).toHaveFocus(), { timeout: 5000 })
   expect(screen.getByLabelText('Bio')).toHaveAttribute('aria-invalid', 'true')
-  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
   expect(save).not.toHaveBeenCalled()
 })
 
 it('disables pristine/reverted saves and never submits an unchanged form', async () => {
   const { save } = setup()
-  const submit = screen.getByRole('button', { name: 'Save changes' })
+  const submit = screen.getByRole('button', { name: 'Save Changes' })
   expect(submit).toBeDisabled()
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   fireEvent.change(screen.getByLabelText('Bio'), { target: { value: 'Draft' } })
@@ -37,14 +37,14 @@ it('disables pristine/reverted saves and never submits an unchanged form', async
 })
 
 it.each([
-  ['Full name', ''], ['Avatar URL', 'javascript:alert(1)'], ['Date of birth', '9999-12-31'],
+  ['Full Name', ''], ['Avatar URL', 'javascript:alert(1)'], ['Date of birth', '9999-12-31'],
   ['Phone number', 'not-a-phone'],
 ])('blocks invalid %s even when the form is submitted directly', async (label, value) => {
   const { save } = setup()
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   await waitFor(() => expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true'))
-  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
   expect(save).not.toHaveBeenCalled()
 })
 
@@ -57,7 +57,7 @@ it.each([
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   await screen.findByText(`${label} must not exceed ${max} characters.`)
   expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true')
-  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
   expect(save).not.toHaveBeenCalled()
 })
 
@@ -65,7 +65,7 @@ it('accepts local today and keeps identity fields out of the form', async () => 
   const { save, user } = setup()
   fireEvent.change(screen.getByLabelText('Date of birth'), { target: { value: localToday() } })
   expect(screen.getByLabelText('Date of birth')).toHaveAttribute('max', localToday())
-  await user.click(screen.getByRole('button', { name: 'Save changes' }))
+  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
   expect(save.mock.calls[0][0]).not.toHaveProperty('email')
   expect(save.mock.calls[0][0]).not.toHaveProperty('status')

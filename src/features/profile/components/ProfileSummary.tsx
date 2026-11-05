@@ -1,6 +1,8 @@
+import { CameraOutlined, CheckCircleFilled, LogoutOutlined } from '@ant-design/icons'
+import { Button } from 'antd'
 import { useState } from 'react'
 import type { User } from '@/types/auth'
-import { isCalendarDate, isSafeAvatarUrl, normalizeAvatarUrl } from '../utils/profileValidation'
+import { isSafeAvatarUrl, normalizeAvatarUrl } from '../utils/profileValidation'
 
 function ProfileAvatar({ url, name }: { url?: string | null; name: string }) {
   const [failed, setFailed] = useState(false)
@@ -9,18 +11,29 @@ function ProfileAvatar({ url, name }: { url?: string | null; name: string }) {
   return <span className="profile-avatar profile-initials" role="img" aria-label={`${name}'s avatar placeholder`}>{initials}</span>
 }
 
-export function ProfileSummary({ user }: { user: User }) {
-  const { profile } = user
-  const dob = profile?.dateOfBirth
-  const fields = [
-    ['User ID', user.userId], ['Email', user.email], ['Bio', profile?.bio], ['Phone number', profile?.phoneNumber],
-    ['Date of birth', dob && isCalendarDate(dob) ? dob : undefined], ['Locale', profile?.locale], ['Timezone', profile?.timezone],
-  ]
-  return <section className="profile-card" aria-labelledby="profile-summary-title">
+interface Props {
+  user: User
+  onEdit?: () => void
+  onSignOut: () => void
+}
+
+export function ProfileSummary({ user, onEdit, onSignOut }: Props) {
+  return <section className="profile-card profile-summary" aria-labelledby="profile-summary-title">
     <div className="profile-identity">
-      <ProfileAvatar key={profile?.avatarUrl ?? ''} url={profile?.avatarUrl} name={user.fullName} />
-      <div><h2 id="profile-summary-title">{user.fullName}</h2><span className="profile-status">{user.status}</span></div>
+      <div className="profile-avatar-container">
+        <ProfileAvatar key={user.profile?.avatarUrl ?? ''} url={user.profile?.avatarUrl} name={user.fullName} />
+        {onEdit && <Button className="profile-avatar-edit" shape="circle" icon={<CameraOutlined aria-hidden="true" />} aria-label="Edit profile" onClick={onEdit} />}
+      </div>
+      <div className="profile-identity-copy">
+        <h1 id="profile-summary-title">{user.fullName}</h1>
+        <div className="profile-badges">
+          <span className="profile-status" data-status={user.status}><span className="profile-status-dot" aria-hidden="true" />{user.status}</span>
+          {/* Student presentation only; never used to determine workspace access. */}
+          <span className="profile-account-badge">STUDENT</span>
+        </div>
+        <p className="profile-email"><span>{user.email}</span><CheckCircleFilled className="profile-email-check" aria-hidden="true" /></p>
+      </div>
     </div>
-    <dl className="profile-details">{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Not provided'}</dd></div>)}</dl>
+    <Button className="profile-sign-out" icon={<LogoutOutlined aria-hidden="true" />} onClick={onSignOut}>Sign Out</Button>
   </section>
 }

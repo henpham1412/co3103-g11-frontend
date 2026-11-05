@@ -31,11 +31,11 @@ it('rejects invalid text before PATCH and saves a corrected Unicode bio through 
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   await screen.findByText('Please remove invalid characters from this value.', {}, uiReady)
   await waitFor(() => expect(screen.getByLabelText('Bio')).toHaveFocus(), uiReady)
-  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
   expect(patch).not.toHaveBeenCalled()
   const bio = ' Một dòng e\u0301😀\nDòng thứ hai '
   await fillAuthFields(user, { Bio: bio })
-  await user.click(screen.getByRole('button', { name: 'Save changes' }))
+  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
   await screen.findByText('Profile saved.', {}, uiReady)
   expect(received).toHaveBeenCalledExactlyOnceWith({ bio })
   expect(screen.getByText(/Một dòng/).textContent).toBe(bio)
@@ -59,12 +59,12 @@ it.each([false, true])('logs in, updates three fields, synchronizes home/header,
   await view.user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
   const stored = tokenStorage.getSession()!
   const raw = (rememberMe ? localStorage : sessionStorage).getItem(AUTH_SESSION_KEY)
-  await fillAuthFields(view.user, { 'Full name': 'Updated Student', Bio: 'A revised biography' })
+  await fillAuthFields(view.user, { 'Full Name': 'Updated Student', Bio: 'A revised biography' })
   // Date inputs are assigned as a date-only value, independent of browser locale.
   const input = screen.getByLabelText('Date of birth') as HTMLInputElement
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
   act(() => { setter.call(input, '2000-02-29'); input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })) })
-  await view.user.click(screen.getByRole('button', { name: 'Save changes' }))
+  await view.user.click(screen.getByRole('button', { name: 'Save Changes' }))
   await screen.findByText('Profile saved.', {}, uiReady)
   expect(received).toHaveBeenCalledExactlyOnceWith({ full_name: 'Updated Student', bio: 'A revised biography', date_of_birth: '2000-02-29' })
   expect(within(screen.getByRole('banner')).getByText('Canonical Student')).toBeInTheDocument()
@@ -76,7 +76,7 @@ it.each([false, true])('logs in, updates three fields, synchronizes home/header,
   view.router.dispose()
   view = renderProfilePage({ preserveStorage: true })
   await screen.findByText('A revised biography', {}, uiReady)
-  expect(screen.getByText('2000-02-29')).toBeInTheDocument()
+  expect(screen.getByLabelText('Date of birth')).toHaveValue('2000-02-29')
   expect(tokenStorage.getSession()?.sessionId).toBe(stored.sessionId)
   expect((JSON.stringify(localStorage) + JSON.stringify(sessionStorage)).includes('A revised biography')).toBe(false)
   await view.user.click(screen.getByRole('button', { name: 'Sign Out' }))
@@ -93,10 +93,10 @@ it('reconciles a partially successful save through GET alone with real provider/
   }), http.patch(identityApiUrl('/users/me'), () => { patches++; offline = true; return new HttpResponse(null, { status: 204 }) }))
   const { user } = renderProfilePage()
   await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
-  await fillAuthFields(user, { 'Full name': 'Submitted name' })
-  await user.click(screen.getByRole('button', { name: 'Save changes' }))
+  await fillAuthFields(user, { 'Full Name': 'Submitted name' })
+  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
   await screen.findByText(/Your update was accepted/, {}, uiReady)
-  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
   const before = reads
   offline = false
   await user.click(screen.getByRole('button', { name: 'Reload profile' }))
@@ -123,7 +123,7 @@ it.each([200, 401])('protects a replacement account from a delayed PATCH respons
   const { user } = renderProfilePage({ session: old })
   await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
   await fillAuthFields(user, { Bio: 'Old account draft' })
-  await user.click(screen.getByRole('button', { name: 'Save changes' }))
+  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
   await started.promise
   act(() => {
     tokenStorage.saveSession(replacement)

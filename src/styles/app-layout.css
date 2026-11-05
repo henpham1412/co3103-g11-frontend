@@ -8,12 +8,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 16px 24px;
   min-height: 80px;
   padding: 16px 40px;
   border-bottom: 1px solid #E4E8F0;
   background: #fff;
+}
+
+.app-header-context {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-width: 0;
 }
 
 .app-brand {
@@ -24,6 +30,7 @@
   font-size: 17px;
   font-weight: 700;
   text-decoration: none;
+  flex-shrink: 0;
 }
 
 .app-logo {
@@ -37,50 +44,61 @@
   font-size: 12px;
 }
 
-.app-header-actions,
+.app-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #667085;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.app-breadcrumb [aria-current='page'] { color: #344054; font-weight: 500; }
+.app-header-separator { color: #D0D5DD; }
+
 .app-profile {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
-  max-width: 100%;
+  max-width: 260px;
+  color: #344054;
+  text-decoration: none;
+  border-radius: 6px;
 }
 
-.app-header-actions > .ant-btn {
-  flex-shrink: 0;
-}
-
-.app-profile {
-  padding: 8px 12px;
-  border: 1px solid #E4E8F0;
-  border-radius: 12px;
-  background: #F6F7FA;
-}
-
-.app-profile-details {
-  display: grid;
-  gap: 4px;
+.app-profile-name {
   min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 14px;
-}
-
-.app-profile-email {
-  color: #667085;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
+  font-weight: 500;
+}
+
+.app-avatar {
+  display: block;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.app-avatar-initials {
+  display: grid;
+  place-items: center;
+  background: #EDF2FF;
+  color: #3459C7;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .app-brand:focus-visible,
-.app-profile-link:focus-visible,
-.app-header .ant-btn:focus-visible {
+.app-profile:focus-visible {
   outline: 2px solid #3459C7;
   outline-offset: 4px;
 }
-
-.app-profile-link { font-size: 14px; font-weight: 600; color: #3459C7; }
-.app-profile-link[aria-current="page"] { text-decoration: underline; text-underline-offset: 4px; }
-.app-header .app-sign-out { border-color: #FDA29B; color: #B42318; }
 
 .app-main {
   width: 100%;
@@ -146,10 +164,14 @@
   font-weight: 600;
 }
 
+@media (max-width: 900px) {
+  .app-breadcrumb, .app-header-separator { display: none; }
+}
+
 @media (max-width: 600px) {
-  .app-header { padding: 16px; }
-  .app-header-actions { width: 100%; }
-  .app-profile { flex: 1 1 200px; }
+  .app-header { min-height: 72px; padding: 16px; gap: 16px; }
+  .app-header-context { flex-shrink: 0; }
+  .app-brand { gap: 8px; font-size: 15px; }
   .app-main { padding: 32px 16px; }
   .app-overview { grid-template-columns: 1fr; gap: 16px; }
   .app-card { padding: 20px; }

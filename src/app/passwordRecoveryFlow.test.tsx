@@ -101,6 +101,6 @@ it.each(['initializing', 'restore-error', 'authenticated'])('keeps recovery publ
   }
   if (phase !== 'authenticated') {
     await screen.findByRole('button', { name: 'Retry' }, uiReady)
-    expect(screen.queryByRole('heading', { name: 'My profile' })).not.toBeInTheDocument()
-  } else await screen.findByRole('heading', { name: 'My profile' }, uiReady)
+    expect(screen.queryByRole('heading', { name: 'Personal Information' })).not.toBeInTheDocument()
+  } else await screen.findByRole('heading', { name: 'Personal Information' }, uiReady)
 })

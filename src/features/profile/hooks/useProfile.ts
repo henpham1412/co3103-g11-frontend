@@ -19,6 +19,7 @@ export function useProfile() {
   const currentSession = useRef(session)
   useLayoutEffect(() => { currentSession.current = session }, [session])
   const [data, setData] = useState<ProfileState>({ sessionId: null, phase: 'loading' })
+  const [formRevision, setFormRevision] = useState(0)
   const pending = useRef<AbortController | null>(null)
   const sequence = useRef(0)
   const active = useRef(false)
@@ -31,7 +32,10 @@ export function useProfile() {
     const request = ++sequence.current
     const current = () => active.current && !controller.signal.aborted && sequence.current === request && currentSession.current?.sessionId === sessionId
     return refreshCurrentUser(controller.signal).then(user => {
-      if (current()) setData({ sessionId, phase: 'ready', user, notice: previous?.phase === 'saved-unverified' ? 'Your saved profile is now up to date.' : undefined })
+      if (current()) {
+        setData({ sessionId, phase: 'ready', user, notice: previous?.phase === 'saved-unverified' ? 'Your saved profile is now up to date.' : undefined })
+        setFormRevision(revision => revision + 1)
+      }
     }).catch(() => {
       if (!current()) return
       if (previous && 'user' in previous) setData({ ...previous, feedback: { fields: [], message: 'Unable to reload your profile. Please try again.' } })
@@ -71,7 +75,10 @@ export function useProfile() {
       if (!current()) return
       acknowledged = true
       const user = await refreshCurrentUser(controller.signal)
-      if (current()) setData({ sessionId, phase: 'ready', user, notice: 'Profile saved.' })
+      if (current()) {
+        setData({ sessionId, phase: 'ready', user, notice: 'Profile saved.' })
+        setFormRevision(revision => revision + 1)
+      }
     } catch (error) {
       if (!current()) return
       setData(acknowledged ? { ...data, phase: 'saved-unverified', feedback: undefined }
@@ -87,5 +94,5 @@ export function useProfile() {
     return () => { active.current = false; sequence.current += 1; pending.current?.abort() }
   }, [load])
 
-  return { data: data.sessionId === sessionId ? data : { sessionId, phase: 'loading' } as ProfileState, reload, edit, cancel, save }
+  return { data: data.sessionId === sessionId ? data : { sessionId, phase: 'loading' } as ProfileState, formRevision, reload, edit, cancel, save }
 }
