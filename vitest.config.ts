@@ -17,8 +17,9 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
-    testTimeout: 15000,
-    maxWorkers: 4,
+    testTimeout: process.env.CI ? 45000 : 15000,
+    // Limit JSDOM contention on CPU-constrained CI runners.
+    maxWorkers: process.env.CI ? 2 : 4,
     clearMocks: true,
     restoreMocks: true,
     unstubEnvs: true,

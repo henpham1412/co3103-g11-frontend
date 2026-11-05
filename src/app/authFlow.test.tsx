@@ -121,7 +121,7 @@ it('keeps the workspace usable when the session expiry exceeds the date display 
 it.each([
   { mode: 'standalone', rememberMe: false }, { mode: 'standalone', rememberMe: true },
   { mode: 'lms', rememberMe: false }, { mode: 'lms', rememberMe: true },
-])('registers, logs in, restores from wire identity and signs out ($mode, rememberMe=$rememberMe)', { timeout: 30000 }, async ({ mode, rememberMe }) => {
+])('registers, logs in, restores from wire identity and signs out ($mode, rememberMe=$rememberMe)', { timeout: 60000 }, async ({ mode, rememberMe }) => {
   vi.stubEnv('VITE_AUTH_MODE', mode)
   if (mode === 'lms') {
     vi.stubEnv('VITE_LMS_CLIENT_ID', 'g11-lms')

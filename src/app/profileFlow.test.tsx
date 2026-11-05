@@ -9,7 +9,7 @@ import { deferred, fillAuthFields } from '@/test/renderAuthPage'
 import { renderProfilePage } from '@/test/renderProfilePage'
 import { identityApiUrl, server } from '@/test/server'
 
-// Lazy routes, session restore and canonical GETs can exceed 1s with four workers on two CPUs.
+// Lazy routes, session restore and canonical GETs can exceed 1s on two-CPU runners.
 const uiReady = { timeout: 5000 }
 
 it('rejects invalid text before PATCH and saves a corrected Unicode bio through canonical GET', async () => {
@@ -41,7 +41,7 @@ it('rejects invalid text before PATCH and saves a corrected Unicode bio through 
   expect(screen.getByText(/Một dòng/).textContent).toBe(bio)
 })
 
-it.each([false, true])('logs in, updates three fields, synchronizes home/header, restores canonical data and logs out (rememberMe %s)', async rememberMe => {
+it.each([false, true])('logs in, updates three fields, synchronizes home/header, restores canonical data and logs out (rememberMe %s)', { timeout: 60000 }, async rememberMe => {
   let canonical = structuredClone(wireFullProfile)
   const received = vi.fn()
   const spies = ['log', 'warn', 'error', 'info', 'debug'].map(method => vi.spyOn(console, method as 'log').mockImplementation(() => {}))
