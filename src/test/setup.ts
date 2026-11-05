@@ -9,6 +9,7 @@ beforeEach(() => {
   vi.stubEnv('VITE_LMS_REDIRECT_URI', '')
   // jsdom has no media query evaluation or pseudo-element layout. AntD uses
   // these browser APIs for responsive forms and modal scrollbar measurement.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
     media: query,

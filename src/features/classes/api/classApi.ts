@@ -7,6 +7,7 @@ import type {
   EnrollmentPolicy,
   MembershipActionResponse,
 } from "../types";
+import { endDemoMembership, getDemoCatalog, getDemoClass, getDemoMemberships, getDemoOutline, joinDemoClass } from "./demoClassApi";
 
 export interface ClassCatalogQuery {
   q?: string;
@@ -20,6 +21,7 @@ export async function getClassCatalog(
   query: ClassCatalogQuery = {},
   signal?: AbortSignal,
 ): Promise<ClassCatalogResponse> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoCatalog(query);
   const response = await lmsClient.get<ClassCatalogResponse>("/classes", {
     params: query,
     signal,
@@ -30,6 +32,7 @@ export async function getClassCatalog(
 export async function getCurrentMemberships(
   signal?: AbortSignal,
 ): Promise<CurrentMembership[]> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoMemberships();
   const response = await lmsClient.get<CurrentMembership[]>("/me/classes", {
     signal,
   });
@@ -40,6 +43,7 @@ export async function joinClass(
   classId: string,
   policy: EnrollmentPolicy,
 ): Promise<MembershipActionResponse> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") return joinDemoClass(classId, policy);
   const endpoint =
     policy === "OPEN"
       ? `/classes/${classId}/membership`
@@ -49,10 +53,12 @@ export async function joinClass(
 }
 
 export async function leaveClass(classId: string): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") return endDemoMembership(classId);
   await lmsClient.delete(`/classes/${classId}/membership`);
 }
 
 export async function withdrawJoinRequest(classId: string): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") return endDemoMembership(classId);
   await lmsClient.delete(`/classes/${classId}/membership-request`);
 }
 
@@ -60,6 +66,7 @@ export async function getClassDetails(
   classId: string,
   signal?: AbortSignal,
 ): Promise<ClassCatalogItem> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoClass(classId);
   const response = await lmsClient.get<ClassCatalogItem>(`/classes/${classId}`, {
     signal,
   });
@@ -70,6 +77,7 @@ export async function getClassOutline(
   classId: string,
   signal?: AbortSignal,
 ): Promise<ClassOutlineResponse> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoOutline(classId);
   const response = await lmsClient.get<ClassOutlineResponse>(
     `/classes/${classId}/outline`,
     { signal },

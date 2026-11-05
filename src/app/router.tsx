@@ -1,4 +1,9 @@
+﻿import { Button } from "antd";
 import { createBrowserRouter } from "react-router-dom";
+import { AuthLayout } from "@/components/layout/AuthLayout";
+import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
+import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
+import { PublicOnlyRoute } from "@/features/auth/components/PublicOnlyRoute";
 
 import ClassCatalogPage from "../features/classes/pages/ClassCatalogPage";
 import ClassDetailPage from "../features/classes/pages/ClassDetailPage";
@@ -6,37 +11,52 @@ import App from "./App";
 import NotFoundPage from "./NotFoundPage";
 import WorkspaceSectionPage from "./WorkspaceSectionPage";
 
+const authFallback = (
+  <AuthLayout>
+    <h1 id="auth-title" className="auth-title">G11 LMS</h1>
+    <p role="status">Loading authentication…</p>
+  </AuthLayout>
+);
+
 export const router = createBrowserRouter([
   {
-    path: "/",
-    element: <App />,
-  },
-  {
-    path: "/classes",
-    element: <ClassCatalogPage />,
-  },
-  {
-    path: "/classes/:classId",
-    element: <ClassDetailPage />,
-  },
-  {
-    path: "/dashboard",
-    element: <WorkspaceSectionPage />,
-  },
-  {
-    path: "/users",
-    element: <WorkspaceSectionPage />,
-  },
-  {
-    path: "/reports",
-    element: <WorkspaceSectionPage />,
-  },
-  {
-    path: "/discussion",
-    element: <WorkspaceSectionPage />,
-  },
-  {
-    path: "*",
-    element: <NotFoundPage />,
+    hydrateFallbackElement: authFallback,
+    errorElement: (
+      <AuthLayout>
+        <h1 id="auth-title" className="auth-title">Unable to load this page</h1>
+        <p className="auth-subtitle" role="alert">Please reload the page to try again.</p>
+        <Button type="primary" onClick={() => window.location.reload()}>Reload page</Button>
+      </AuthLayout>
+    ),
+    children: [
+      {
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "/",
+            element: <AuthenticatedLayout />,
+            children: [{ index: true, element: <App /> }],
+          },
+          { path: "/classes", element: <ClassCatalogPage /> },
+          { path: "/classes/:classId", element: <ClassDetailPage /> },
+          { path: "/dashboard", element: <WorkspaceSectionPage /> },
+          { path: "/discussion", element: <WorkspaceSectionPage /> },
+        ],
+      },
+      {
+        element: <PublicOnlyRoute />,
+        children: [
+          {
+            path: "/login",
+            lazy: async () => ({ Component: (await import("@/features/auth/pages/LoginPage")).default }),
+          },
+          {
+            path: "/register",
+            lazy: async () => ({ Component: (await import("@/features/auth/pages/RegisterPage")).default }),
+          },
+        ],
+      },
+      { path: "*", element: <NotFoundPage /> },
+    ],
   },
 ]);
