@@ -1,5 +1,8 @@
-import { useState } from 'react'
-import { Link, NavLink, useMatch } from 'react-router-dom'
+import { useId, useRef, useState } from 'react'
+import { DownOutlined } from '@ant-design/icons'
+import { Dropdown } from 'antd'
+import type { MenuProps } from 'antd'
+import { Link, useMatch, useNavigate } from 'react-router-dom'
 import { isSafeAvatarUrl, normalizeAvatarUrl } from '@/features/profile/utils/profileValidation'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -14,10 +17,28 @@ function HeaderAvatar({ name, url }: { name: string; url?: string | null }) {
 }
 
 export function AppHeader() {
-  const { state } = useAuth()
+  const { state, logout } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuId = useId()
+  const profileButtonRef = useRef<HTMLButtonElement>(null)
+  const navigate = useNavigate()
   const isProfile = useMatch('/profile') !== null
   if (state.status !== 'authenticated') return null
   const { user } = state
+  const role = ('role' in user && typeof user.role === 'string' ? user.role.trim().toUpperCase() : '') || 'STUDENT'
+  const profileLabel = `${user.fullName} - ${role}`
+  const items: MenuProps['items'] = [
+    {
+      key: 'profile',
+      label: <Link to="/profile">Account Profile</Link>,
+      onClick: ({ domEvent }) => {
+        // Ant Design can focus the menu item itself instead of its link.
+        if (domEvent.target === domEvent.currentTarget) void navigate('/profile')
+      },
+    },
+    { type: 'divider' },
+    { key: 'logout', label: 'Sign Out', danger: true, onClick: () => { void logout() } },
+  ]
 
   return (
     <header className="app-header">
@@ -28,15 +49,44 @@ export function AppHeader() {
         </Link>
         <span className="app-header-separator" aria-hidden="true">|</span>
         <nav className="app-breadcrumb" aria-label="Breadcrumb">
-          <span>Central Identity</span>
-          <span aria-hidden="true">/</span>
+          <Link to="/">Central Identity</Link>
+          <span className="app-breadcrumb-separator" aria-hidden="true">&gt;</span>
           <span aria-current="page">{isProfile ? 'Account Profile' : 'Overview'}</span>
         </nav>
       </div>
-      <NavLink className="app-profile" to="/profile" aria-label="My profile">
-        <HeaderAvatar key={`${user.userId}:${user.profile?.avatarUrl ?? ''}`} name={user.fullName} url={user.profile?.avatarUrl} />
-        <span className="app-profile-name">{user.fullName}</span>
-      </NavLink>
+      <Dropdown
+        menu={{
+          items,
+          id: menuId,
+          'aria-label': 'Account menu',
+          onKeyDown: event => {
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+              setMenuOpen(false)
+              profileButtonRef.current?.focus()
+            }
+          },
+        }}
+        trigger={['click']}
+        placement="bottomRight"
+        autoFocus
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+      >
+        <button
+          ref={profileButtonRef}
+          type="button"
+          className="app-profile"
+          aria-label="My profile"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-controls={menuOpen ? menuId : undefined}
+        >
+          <HeaderAvatar key={`${user.userId}:${user.profile?.avatarUrl ?? ''}`} name={user.fullName} url={user.profile?.avatarUrl} />
+          <span className="app-profile-name" title={profileLabel}>{profileLabel}</span>
+          <DownOutlined className="app-profile-chevron" aria-hidden="true" />
+        </button>
+      </Dropdown>
     </header>
   )
 }

@@ -49,22 +49,30 @@
   align-items: center;
   gap: 12px;
   color: #667085;
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
 }
 
+.app-breadcrumb a { color: #475467; text-decoration: none; }
+.app-breadcrumb a:hover { text-decoration: underline; }
+.app-breadcrumb-separator { color: #D0D5DD; }
 .app-breadcrumb [aria-current='page'] { color: #344054; font-weight: 500; }
 .app-header-separator { color: #D0D5DD; }
 
 .app-profile {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  max-width: 260px;
+  max-width: 320px;
+  padding: 4px 12px 4px 6px;
+  border: 1px solid #E4E7EC;
+  border-radius: 9999px;
+  background: #fff;
   color: #344054;
   text-decoration: none;
-  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
 }
 
 .app-profile-name {
@@ -72,8 +80,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
+}
+
+.app-profile-chevron {
+  flex-shrink: 0;
+  color: #667085;
+  font-size: 12px;
 }
 
 .app-avatar {
@@ -95,6 +109,7 @@
 }
 
 .app-brand:focus-visible,
+.app-breadcrumb a:focus-visible,
 .app-profile:focus-visible {
   outline: 2px solid #3459C7;
   outline-offset: 4px;
