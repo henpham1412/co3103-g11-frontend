@@ -246,9 +246,13 @@ a 24px target and a visible keyboard focus indicator.
 
 Recovery remains accessible while a previous session is restoring or has a restore
 error, and while another account is signed in. Session verification gates are on
-protected and public-only routes; `/profile` stays protected. The header's avatar
-and full name link opens the profile page. Sign Out is in the profile summary card.
-Anonymous profile entry returns to that page after sign-in.
+protected and public-only routes; `/profile` stays protected. Clicking the header's
+profile badge (avatar, full name and role) opens a dropdown containing an
+**Account Profile** link to `/profile`, a divider, and a **Sign Out** action.
+Header role text uses Title Case, such as `Student` or `Administrator`, with
+`Student` as the presentation fallback. Central Identity supplies no workspace role;
+this label does not grant authorization. **Sign Out** also remains in the profile
+summary card. Anonymous profile entry returns to that page after sign-in.
 
 ### Requesting and using a reset link
 
@@ -292,9 +296,12 @@ still reaches hosting, so server access-log handling remains a deployment concer
 
 Profile entry calls the existing validated `GET /users/me` through
 `refreshCurrentUser(signal)`. A login response alone does not establish complete
-profile data. Missing/null fields show “Not provided”; avatars accept only absolute
-HTTP(S) URLs without credentials, backslashes, malformed authority or control characters, use no referrer, and fall
-back to initials on failure. Date-only values retain their calendar day.
+profile data. Missing, null or empty optional profile fields appear as blank form
+inputs in the inline editor. Avatars accept only absolute HTTP(S) URLs without
+credentials, backslashes, malformed authority or control characters, use no referrer,
+and fall back to initials on failure. Date-only values retain their calendar day.
+The read-only Email Address label makes no verification claim: Central Identity
+supplies no email-verification flag.
 
 The editor supports exactly seven fields:
 
@@ -333,9 +340,13 @@ the following GET supplies the canonical profile. Source evidence and known poli
 differences are recorded in [the integration contracts](docs/fe-2-contracts.md),
 checked against the CI-3 snapshot on 2026-11-04.
 
-**Cancel** discards local edits without HTTP. **Save changes** prevents duplicate
-submissions, sends PATCH, then loads canonical values with GET. Header/home update
-from that canonical response. PATCH failures retain the draft and never trigger an
+**Cancel** discards local edits without HTTP. **Save changes** is enabled for dirty
+forms, including invalid drafts, so submission can reveal validation feedback.
+Invalid submissions open Additional details and focus the first invalid field
+without sending PATCH. Pristine/reverted forms and busy/locked states keep Save
+disabled. Valid saves prevent duplicate submissions, send PATCH, then load canonical
+values with GET. Header/home update from that canonical response. PATCH failures
+retain the draft and never trigger an
 automatic retry. Network/timeout failures may already have reached the server;
 **Reload profile** explicitly replaces the draft with saved data.
 

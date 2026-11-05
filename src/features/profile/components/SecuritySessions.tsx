@@ -6,8 +6,8 @@ function currentDevice() {
   const browser = /Edg\//.test(agent) ? 'Edge' : /OPR\//.test(agent) ? 'Opera'
     : /Firefox\/|FxiOS\//.test(agent) ? 'Firefox' : /Chrome\/|CriOS\//.test(agent) ? 'Chrome'
       : /Safari\//.test(agent) ? 'Safari' : 'Current browser'
-  const os = /Macintosh|Mac OS X/.test(agent) ? 'macOS' : /Android/.test(agent) ? 'Android' : /iPhone|iPad|iPod/.test(agent) ? 'iOS'
-    : /Windows/.test(agent) ? 'macOS' : /Linux/.test(agent) ? 'Linux' : null
+  const os = /iPhone|iPad|iPod/i.test(agent) ? 'iOS' : /Macintosh|Mac OS/i.test(agent) ? 'macOS' : /Android/i.test(agent) ? 'Android'
+    : /Windows/i.test(agent) ? 'Windows' : /Linux/i.test(agent) ? 'Linux' : null
   return os ? `${browser} on ${os}` : browser
 }
 

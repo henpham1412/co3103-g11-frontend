@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Form, Input, Tag } from 'antd'
+import { Alert, Button, Form, Input } from 'antd'
 import type { User } from '@/types/auth'
 import type { ProfileField, ProfileFormValues } from '@/types/profile'
 import { buildProfileChanges, toProfileFormValues } from '../utils/profileForm'
@@ -63,7 +63,7 @@ export function ProfileForm({ user, busy, locked, feedback, onSave, onCancel, on
       }}
       onFinish={async values => { if (!busy && !locked && buildProfileChanges(baseline, values).kind === 'changed') await onSave(values) }}>
       {renderField('fullName')}
-      <Form.Item label={<span className="profile-label-with-tag">Email Address <Tag color="success" className="profile-verified-tag">Verified</Tag></span>} htmlFor="profile-email" extra={<span id="profile-email-help">Central email address cannot be changed directly.</span>}>
+      <Form.Item label="Email Address" htmlFor="profile-email" extra={<span id="profile-email-help">Central email address cannot be changed directly.</span>}>
         <Input id="profile-email" type="email" value={user.email} readOnly aria-describedby="profile-email-help" className="profile-readonly" />
       </Form.Item>
       {renderField('bio')}
@@ -77,7 +77,7 @@ export function ProfileForm({ user, busy, locked, feedback, onSave, onCancel, on
         </div>
       </details>
       <div className="profile-form-actions">
-        <Button type="primary" htmlType="submit" loading={busy} disabled={busy || locked || changes.kind !== 'changed'}>Save Changes</Button>
+        <Button type="primary" htmlType="submit" loading={busy} disabled={busy || locked || changes.kind === 'unchanged'}>Save Changes</Button>
         <Button onClick={() => { form.resetFields(); setDraft(baseline); onCancel() }} disabled={busy || locked}>Cancel</Button>
       </div>
     </Form>

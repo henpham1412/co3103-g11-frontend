@@ -13,14 +13,14 @@ function setup() {
 }
 
 // The shared field validator is exhaustive in profileValidation.test.ts; verify its UI wiring once.
-it('disables Save and focuses local feedback for invalid text', async () => {
-  const { save } = setup()
+it('allows validation on Save and focuses local feedback without saving invalid text', async () => {
+  const { save, user } = setup()
   fireEvent.change(screen.getByLabelText('Bio'), { target: { value: 'Draft\uD800' } })
-  fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
+  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
   await screen.findByText('Please remove invalid characters from this value.', {}, { timeout: 5000 })
   await waitFor(() => expect(screen.getByLabelText('Bio')).toHaveFocus(), { timeout: 5000 })
   expect(screen.getByLabelText('Bio')).toHaveAttribute('aria-invalid', 'true')
-  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
   expect(save).not.toHaveBeenCalled()
 })
 
@@ -44,7 +44,7 @@ it.each([
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   await waitFor(() => expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true'))
-  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
   expect(save).not.toHaveBeenCalled()
 })
 
@@ -57,8 +57,18 @@ it.each([
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   await screen.findByText(`${label} must not exceed ${max} characters.`)
   expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true')
-  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
   expect(save).not.toHaveBeenCalled()
+})
+
+it('labels the read-only email without claiming verification when no verification data exists', () => {
+  setup()
+  const email = screen.getByRole('textbox', { name: 'Email Address' })
+  expect(email).toHaveValue(validUser.email)
+  expect(email).toHaveAttribute('readonly')
+  expect(email).toHaveAccessibleDescription('Central email address cannot be changed directly.')
+  expect(screen.queryByText(/verified/i)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/verified/i)).not.toBeInTheDocument()
 })
 
 it('accepts local today and keeps identity fields out of the form', async () => {

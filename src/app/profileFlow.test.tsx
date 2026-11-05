@@ -31,7 +31,7 @@ it('rejects invalid text before PATCH and saves a corrected Unicode bio through 
   fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
   await screen.findByText('Please remove invalid characters from this value.', {}, uiReady)
   await waitFor(() => expect(screen.getByLabelText('Bio')).toHaveFocus(), uiReady)
-  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
   expect(patch).not.toHaveBeenCalled()
   const bio = ' Một dòng e\u0301😀\nDòng thứ hai '
   await fillAuthFields(user, { Bio: bio })

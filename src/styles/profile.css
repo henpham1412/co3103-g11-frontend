@@ -94,8 +94,6 @@
 .profile-email { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; color: #667085; font-size: 13px; line-height: 1.5; }
 .profile-email .anticon { flex-shrink: 0; }
 .profile-email-check { color: #039855; }
-.profile-label-with-tag { display: inline-flex; align-items: center; gap: 8px; }
-.profile-verified-tag { font-size: 11px; font-weight: 600; line-height: 16px; padding: 0 6px; border-radius: 9999px; margin-inline-end: 0; }
 .profile-sign-out.ant-btn { flex-shrink: 0; height: 38px; font-size: 13px; color: #475467; }
 
 .profile-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 24px; align-items: start; }

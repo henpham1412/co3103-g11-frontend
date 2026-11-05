@@ -85,6 +85,52 @@ it('opens the avatar editor from the camera button and reveals collapsed fields 
   expect(screen.getByLabelText('Phone number')).toHaveValue('+84987654321')
 })
 
+it('reveals and focuses a collapsed invalid field on Save without PATCH until it is corrected', async () => {
+  let canonical = structuredClone(wireFullProfile)
+  const mutations = vi.fn()
+  server.use(
+    http.get(identityApiUrl('/users/me'), () => HttpResponse.json(canonical)),
+    http.patch(identityApiUrl('/users/me'), async ({ request }) => {
+      const body = await request.json() as Record<string, string>
+      mutations(body)
+      canonical = { ...canonical, profile: { ...canonical.profile, ...body } }
+      return HttpResponse.json(wireProfileAcknowledgment)
+    }),
+  )
+  const { user } = renderProfilePage()
+  await user.click(await screen.findByRole('button', { name: 'Edit profile' }, uiReady))
+  const avatar = screen.getByLabelText('Avatar URL')
+  const details = avatar.closest('details')!
+  await user.clear(avatar)
+  await user.paste('javascript:alert(1)')
+  const errorText = 'Enter an absolute HTTP or HTTPS image URL without credentials.'
+  await screen.findByText(errorText)
+  await user.click(screen.getByText('Additional details', { exact: false, selector: 'summary' }))
+  expect(details.open).toBe(false)
+  await user.clear(screen.getByLabelText('Bio'))
+  await user.paste('Valid visible draft')
+  expect(screen.getByText(errorText)).not.toBeVisible()
+
+  const save = screen.getByRole('button', { name: 'Save Changes' })
+  expect(save).toBeEnabled()
+  await user.click(save)
+  await waitFor(() => expect(details.open).toBe(true))
+  await waitFor(() => expect(avatar).toHaveFocus())
+  expect(avatar).toHaveAttribute('aria-invalid', 'true')
+  expect(avatar).toHaveAccessibleDescription(errorText)
+  expect(screen.getByText(errorText)).toBeVisible()
+  expect(screen.getByLabelText('Bio')).toHaveValue('Valid visible draft')
+  expect(mutations).not.toHaveBeenCalled()
+
+  const corrected = 'https://example.com/corrected.png'
+  await user.clear(avatar)
+  await user.paste(corrected)
+  await user.click(save)
+  await screen.findByText('Profile saved.', {}, uiReady)
+  expect(mutations).toHaveBeenCalledExactlyOnceWith({ avatar_url: corrected, bio: 'Valid visible draft' })
+  expect(screen.getByLabelText('Avatar URL')).toHaveValue(corrected)
+})
+
 it('redirects anonymous entry to sign in, then loads the complete profile with Bearer after login', async () => {
   const read = vi.fn()
   server.use(http.get(identityApiUrl('/users/me'), ({ request }) => {
@@ -205,8 +251,8 @@ it('blocks an invalid avatar and valid bio before PATCH, then saves the correcte
   const save = screen.getByRole('button', { name: 'Save Changes' })
   for (const value of ['https://example.com/a|b.png', 'https://example.com/%zz', 'https://example.com/a#b#c']) {
     fireEvent.change(avatar, { target: { value } })
-    expect(save).toBeDisabled()
-    fireEvent.submit(screen.getByRole('form', { name: 'Edit profile' }))
+    expect(save).toBeEnabled()
+    await user.click(save)
     await waitFor(() => expect(avatar).toHaveAttribute('aria-invalid', 'true'))
     await waitFor(() => expect(avatar).toHaveFocus())
     expect(screen.getByLabelText('Bio')).toHaveValue('Valid draft bio')
