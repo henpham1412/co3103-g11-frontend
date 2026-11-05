@@ -36,10 +36,15 @@ it('shows the identity header, inline personal form and account cards without en
   expect(screen.queryByRole('region', { name: 'Connected LMS Workspaces' })).not.toBeInTheDocument()
   expect(screen.queryByText('Private Tutoring Workspace')).not.toBeInTheDocument()
   expect(screen.queryByText('Math & Science Hub')).not.toBeInTheDocument()
-  expect(screen.getByRole('region', { name: 'Security & Sessions' })).toHaveTextContent('Current Session')
+  const security = within(screen.getByRole('region', { name: 'Security' }))
+  expect(screen.queryByText(/Current Session|Active now/i)).not.toBeInTheDocument()
+  expect(screen.queryByText(/\b(?:Chrome|Edge|Opera|Firefox|Safari|Current browser|Windows|iOS|macOS|Android|Linux)\b/i)).not.toBeInTheDocument()
   expect(screen.queryByText(/192\.168\./)).not.toBeInTheDocument()
-  await user.click(screen.getByRole('link', { name: 'Password Recovery' }))
+  const recovery = security.getByRole('link', { name: 'Password Recovery' })
+  expect(recovery).toHaveAttribute('href', '/forgot-password')
+  await user.click(recovery)
   expect(router.state.location.pathname).toBe('/forgot-password')
+  expect(await screen.findByRole('heading', { name: 'Forgot your password?' }, uiReady)).toBeInTheDocument()
 })
 
 it('saves directly from the inline form and resets to canonical values even when the server keeps the old value', async () => {

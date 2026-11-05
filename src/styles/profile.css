@@ -116,13 +116,6 @@
 .profile-feedback, .profile-card [role='alert'] { margin-bottom: 20px; }
 .profile-reload { margin-top: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 
-.profile-session { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: start; gap: 12px; }
-.profile-session > .profile-status { margin-top: 2px; font-size: 9px; padding-inline: 6px; }
-.profile-item-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; color: #3459c7; background: #edf2ff; font-size: 18px; }
-.profile-item-icon--device { color: #667085; background: #f2f4f7; }
-.profile-item-copy { min-width: 0; }
-.profile-item-copy h3 { margin: 0 0 5px; font-size: 12px; font-weight: 600; line-height: 1.5; }
-.profile-item-copy p { margin: 0; color: #667085; font-size: 11px; line-height: 1.6; }
 .profile-recovery { display: flex; align-items: center; gap: 8px; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e4e8f0; color: #3459c7; font-size: 13px; font-weight: 500; }
 .profile-recovery > :last-child { margin-left: auto; }
 .profile-additional summary:focus-visible, .profile-recovery:focus-visible { outline: 2px solid #3459c7; outline-offset: 4px; border-radius: 4px; }
@@ -144,6 +137,4 @@
 @media (max-width: 380px) {
   .profile-field-pair { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .profile-additional summary span { display: block; margin: 6px 0 0 16px; }
-  .profile-session { grid-template-columns: 36px minmax(0, 1fr); }
-  .profile-session > .profile-status { grid-column: 2; }
 }

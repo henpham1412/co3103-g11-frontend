@@ -358,7 +358,9 @@ Profile refresh leaves the protected shell mounted and updates identity/profile 
 memory only: session ID, token, expiry, remember-me mode, schema and persisted data
 stay unchanged. Existing tabs do not receive realtime profile synchronization.
 
-The profile sidebar contains **Security & Sessions** and **Password Recovery**.
+The profile sidebar contains a **Security** card solely for **Password Recovery**
+navigation to `/forgot-password`. The session display, including current-device
+details and the active-session indicator, has been removed.
 The mock Connected LMS Workspaces card and examples have been removed. A real
 workspace integration needs a workspace API contract.
 

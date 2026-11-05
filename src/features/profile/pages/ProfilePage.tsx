@@ -4,7 +4,7 @@ import { fe2Theme } from '@/app/theme'
 import { useAuth } from '@/hooks/useAuth'
 import { ProfileSummary } from '../components/ProfileSummary'
 import { ProfileForm } from '../components/ProfileForm'
-import { SecuritySessions } from '../components/SecuritySessions'
+import { SecurityCard } from '../components/SecurityCard'
 import { useProfile } from '../hooks/useProfile'
 import '@/styles/profile.css'
 
@@ -34,7 +34,7 @@ export default function ProfilePage() {
           <ProfileForm key={`${data.sessionId}:${formRevision}`} user={data.user} busy={data.phase === 'saving' || data.phase === 'reloading'} locked={data.phase === 'saved-unverified'} feedback={data.feedback} onEdit={edit} onSave={save} onCancel={cancel} />
           {(data.phase === 'saved-unverified' || data.phase === 'reloading' || data.phase === 'editing' && data.feedback) && <div className="profile-reload"><Button onClick={() => { void reload() }} disabled={data.phase === 'reloading'}>Reload profile</Button><p className="profile-muted">Reload replaces your draft with the latest saved profile.</p></div>}
         </div>
-        <aside className="profile-sidebar" aria-label="Account information"><SecuritySessions /></aside>
+        <aside className="profile-sidebar" aria-label="Account information"><SecurityCard /></aside>
       </div>}
     </div>
   </ConfigProvider>
