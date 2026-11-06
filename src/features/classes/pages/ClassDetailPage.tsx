@@ -200,7 +200,7 @@ export default function ClassDetailPage() {
     <Alert
       type="info"
       showIcon
-      message="The syllabus is available to active class members."
+      title="The syllabus is available to active class members."
       description={membershipStatusError
         ? "Your membership status could not be checked, so join actions are unavailable. Please try again later."
         : membershipStatus === "PENDING"
@@ -208,7 +208,7 @@ export default function ClassDetailPage() {
           : "Join this class to view its published learning outline."}
     />
   ) : outlineError ? (
-    <Alert type="warning" showIcon message="The syllabus could not be loaded" description={outlineError} />
+    <Alert type="warning" showIcon title="The syllabus could not be loaded" description={outlineError} />
   ) : outline && outline.chapters.length > 0 ? (
     <>
       <div className="class-detail__section-heading">
@@ -227,7 +227,7 @@ export default function ClassDetailPage() {
                 <span className="class-detail__lesson-check"><CheckCircleOutlined /></span>
                 <span>{lesson.title}</span>
                 {lesson.estimated_duration != null && (
-                  <Tag bordered={false}>{lesson.estimated_duration} mins</Tag>
+                  <Tag variant="filled">{lesson.estimated_duration} mins</Tag>
                 )}
               </div>
             ))
@@ -254,7 +254,7 @@ export default function ClassDetailPage() {
             <span>Loading class details…</span>
           </div>
         ) : detailError || !classItem ? (
-          <Alert type="error" showIcon message="Could not load this class" description={detailError ?? "Class not found."} />
+          <Alert type="error" showIcon title="Could not load this class" description={detailError ?? "Class not found."} />
         ) : (
           <>
             <Card className="class-detail__hero">
@@ -293,7 +293,7 @@ export default function ClassDetailPage() {
               <Alert
                 type="warning"
                 showIcon
-                message="Membership status is unavailable"
+                title="Membership status is unavailable"
                 description="Membership actions are disabled until your status can be loaded."
               />
             )}

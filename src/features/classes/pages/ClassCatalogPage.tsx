@@ -312,7 +312,7 @@ export default function ClassCatalogPage() {
           <Alert
             type="error"
             showIcon
-            message="Could not load the class catalog"
+            title="Could not load the class catalog"
             description={error}
             className="class-catalog__error"
           />
@@ -322,7 +322,7 @@ export default function ClassCatalogPage() {
           <Alert
             type="warning"
             showIcon
-            message="Membership status is unavailable"
+            title="Membership status is unavailable"
             description="You can browse classes, but join and leave actions are disabled until your membership status can be loaded."
             className="class-catalog__error"
           />
