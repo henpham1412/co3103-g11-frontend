@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Avatar, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Spin, Tag, Typography, message } from "antd";
+import { FolderOpenOutlined } from "@ant-design/icons";
 import { Link, useParams } from "react-router-dom";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
 import { getClassDetails } from "../../classes/api/classApi";
 import type { ClassCatalogItem } from "../../classes/types";
-import { approveTutorMember, getTutorClassMembers, rejectTutorMember, removeTutorMember, updateTutorClass } from "../api/tutorClassApi";
-import type { TutorMember, TutorMemberPage } from "../types";
+import { approveTutorMember, getTutorClassMembers, getTutorOutline, rejectTutorMember, removeTutorMember, updateTutorClass } from "../api/tutorClassApi";
+import type { TutorMember, TutorMemberPage, TutorOutline } from "../types";
 
 const PAGE_SIZE = 20;
 
@@ -15,6 +16,8 @@ export default function TutorClassDetailPage() {
   const [activeMembers, setActiveMembers] = useState<TutorMemberPage>();
   const [pendingMembers, setPendingMembers] = useState<TutorMemberPage>();
   const [removeCandidate, setRemoveCandidate] = useState<TutorMember>();
+  const [outline, setOutline] = useState<TutorOutline>();
+  const [activeTab, setActiveTab] = useState<"syllabus" | "members">("syllabus");
   const [activePage, setActivePage] = useState(1);
   const [pendingPage, setPendingPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -33,11 +36,13 @@ export default function TutorClassDetailPage() {
       getClassDetails(classId, controller.signal),
       getTutorClassMembers(classId, { status: "ACTIVE", page: activePage, size: PAGE_SIZE }, controller.signal),
       getTutorClassMembers(classId, { status: "PENDING", page: pendingPage, size: PAGE_SIZE }, controller.signal),
+      getTutorOutline(classId, controller.signal),
     ])
-      .then(([classDetails, active, pending]) => {
+      .then(([classDetails, active, pending, classOutline]) => {
         setDetails(classDetails);
         setActiveMembers(active);
         setPendingMembers(pending);
+        setOutline(classOutline);
         setError(undefined);
       })
       .catch((cause: unknown) => { if (!controller.signal.aborted) setError(errorText(cause)); })
@@ -107,6 +112,12 @@ export default function TutorClassDetailPage() {
             <div className="tutor-class-detail-meta"><span>{details.tutor.full_name} · Tutor</span><span>{details.active_member_count}/{details.max_capacity ?? "∞"} Seats</span><Tag color="blue">{details.enrollment_policy}</Tag></div>
           </section>
 
+          <div className="tutor-page__tabs" role="tablist"><button className={activeTab === "syllabus" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "syllabus"} onClick={() => setActiveTab("syllabus")}>Course Syllabus</button><button className={activeTab === "members" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "members"} onClick={() => setActiveTab("members")}>Member <Tag>{activeMembers?.total_items ?? 0}</Tag></button></div>
+          {activeTab === "syllabus" ? <section className="tutor-panel tutor-syllabus">
+            <header className="tutor-syllabus__heading"><div><h2>Course Syllabus</h2><span>{outline?.chapters.length ?? 0} chapters · {outline?.chapters.reduce((sum, chapter) => sum + chapter.lessons.length, 0) ?? 0} lessons</span></div><Link to={`/tutor/classes/${classId}/content`}><Button icon={<FolderOpenOutlined />}>Manage content</Button></Link></header>
+            <Alert type="info" showIcon message="Tutor preview includes hidden content. Students can only access published content inside published chapters." />
+            {outline?.chapters.length ? <div className="tutor-syllabus__chapters">{outline.chapters.map((chapter, index) => <article className="tutor-syllabus__chapter" key={chapter.chapter_id}><header><strong>Chapter {index + 1} · {chapter.title}</strong><Tag color={chapter.status === "PUBLISHED" ? "green" : "default"}>{chapter.status}</Tag></header>{chapter.lessons.map((lesson, lessonIndex) => <div className="tutor-syllabus__lesson" key={lesson.lesson_id}><span>{index + 1}.{lessonIndex + 1} · {lesson.title}</span><span>{lesson.estimated_duration ?? "—"} mins · {lesson.status}</span></div>)}</article>)}</div> : <Empty description="No syllabus content yet" />}
+          </section> : <>
           <section className="tutor-page__section tutor-panel">
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">Membership is retained when a student leaves or is removed.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
             {activeMembers?.items.length ? <><MemberTable members={activeMembers.items} busyMember={busyMember} onRemove={setRemoveCandidate} /><Pagination style={{ marginTop: 16, textAlign: "right" }} current={activePage} pageSize={PAGE_SIZE} total={activeMembers.total_items} showSizeChanger={false} onChange={setActivePage} /></> : <Empty description="No active members" />}
@@ -116,6 +127,7 @@ export default function TutorClassDetailPage() {
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Pending Requests <Tag color="orange">{pendingMembers?.total_items ?? 0}</Tag></h2><div className="tutor-panel__sub">Pending requests do not consume seats.</div></div><span>{details.max_capacity === null ? "Capacity unlimited" : `${Math.max(0, details.max_capacity - details.active_member_count)} seats available`}</span></div>
             {pendingMembers?.items.length ? <><PendingTable members={pendingMembers.items} busyMember={busyMember} onAction={act} /><Pagination style={{ marginTop: 16, textAlign: "right" }} current={pendingPage} pageSize={PAGE_SIZE} total={pendingMembers.total_items} showSizeChanger={false} onChange={setPendingPage} /></> : <Empty description="No pending requests" />}
           </section>
+          </>}
         </> : <Empty description="Class not found" />}
 
         <Modal title="Edit Class Settings" open={editOpen} onCancel={() => setEditOpen(false)} onOk={saveSettings} confirmLoading={saving} okText="Save Changes">

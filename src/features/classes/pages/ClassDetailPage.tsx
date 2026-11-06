@@ -225,7 +225,7 @@ export default function ClassDetailPage() {
             chapter.lessons.flatMap((lesson) => [
               <div className="class-detail__lesson" key={lesson.lesson_id}>
                 <span className="class-detail__lesson-check"><CheckCircleOutlined /></span>
-                <span>{lesson.title}</span>
+                <Link to={`/classes/${classId}/lessons/${lesson.lesson_id}`}>{lesson.title}</Link>
                 {lesson.estimated_duration != null && (
                   <Tag variant="filled">{lesson.estimated_duration} mins</Tag>
                 )}

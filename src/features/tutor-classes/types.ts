@@ -1,4 +1,4 @@
-import type { EnrollmentPolicy, MembershipStatus } from "../classes/types";
+import type { ContentVisibility, EnrollmentPolicy, MaterialKind, MembershipStatus } from "../classes/types";
 
 export interface TutorClass {
   class_id: string;
@@ -47,4 +47,44 @@ export interface CreateTutorClass {
   prerequisites_description?: string;
   max_capacity?: number | null;
   enrollment_policy: EnrollmentPolicy;
+}
+
+export type { ContentVisibility, MaterialKind };
+
+export interface TutorOutline {
+  class_id: string;
+  chapters: TutorChapter[];
+}
+
+export interface TutorChapter {
+  chapter_id: string;
+  class_id?: string;
+  title: string;
+  description: string | null;
+  sequence_order: number;
+  status: ContentVisibility;
+  created_at?: string;
+  lessons: TutorLesson[];
+}
+
+export interface TutorLesson {
+  lesson_id: string;
+  chapter_id?: string;
+  title: string;
+  description: string | null;
+  estimated_duration: number | null;
+  sequence_order: number;
+  status: ContentVisibility;
+  materials: TutorMaterial[];
+}
+
+export interface TutorMaterial {
+  material_id: string;
+  lesson_id?: string;
+  title: string;
+  material_type: MaterialKind;
+  file_url: string | null;
+  content: string | null;
+  sequence_order: number;
+  status: ContentVisibility;
 }
