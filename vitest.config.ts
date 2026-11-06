@@ -20,7 +20,10 @@ export default defineConfig({
     // mocks, so the flag is pinned off here rather than inherited from whoever's local env.
     env: { VITE_DEMO_MODE: '' },
     testTimeout: 15000,
-    maxWorkers: 4,
+    // The jsdom + AntD screens mount the whole application per test, so four concurrent workers
+    // oversubscribe a four-core CI runner: the shared-authentication flow measured 20s per case
+    // under four workers against 9s under two, and the full suite still finished faster.
+    maxWorkers: 2,
     clearMocks: true,
     restoreMocks: true,
     unstubEnvs: true,
