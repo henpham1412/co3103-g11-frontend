@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert, Button, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select,
-  Spin, Switch, Tabs, Tag, Tooltip, Typography, Upload, message,
+  Alert, App, Button, Empty, Form, Input, InputNumber, Modal, Popconfirm, Radio, Select,
+  Spin, Switch, Tabs, Tag, Tooltip, Typography, Upload,
 } from "antd";
 import {
   ArrowLeftOutlined, BookOutlined, DeleteOutlined, EditOutlined, FileTextOutlined,
@@ -10,6 +10,7 @@ import {
 import { Link, useParams } from "react-router-dom";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
 import { getClassDetails } from "../../classes/api/classApi";
+import { isAllowedVideoUrl, isStoredMaterialFile } from "../../classes/material-source";
 import { normalizeApiError } from "@/api/apiError";
 import type { ClassCatalogItem } from "../../classes/types";
 import {
@@ -19,12 +20,17 @@ import {
   swapMaterialOrder, updateChapter, updateLesson, updateMaterial, uploadMaterial,
 } from "../api/tutorClassApi";
 import type { ContentVisibility, MaterialKind, TutorChapter, TutorLesson, TutorMaterial, TutorOutline } from "../types";
-import { contentErrorText, isStaleTutorState } from "../utils/tutorErrorText";
+import { contentErrorText, isStaleContentState } from "../utils/tutorErrorText";
 
 type Editor = { kind: "chapter"; item?: TutorChapter } | { kind: "lesson"; chapter: TutorChapter; item?: TutorLesson } | { kind: "material"; lesson: TutorLesson; item?: TutorMaterial };
 
+// ChapterService.validateContentTitle rejects a chapter or lesson title over 150 characters.
+// Material titles are TEXT on the server and carry no such cap.
+const CONTENT_TITLE_LIMIT = 150;
+
 export default function TutorContentManagementPage() {
   const { classId = "" } = useParams();
+  const { message } = App.useApp();
   const [classDetails, setClassDetails] = useState<ClassCatalogItem>();
   const [outline, setOutline] = useState<TutorOutline>();
   const [loading, setLoading] = useState(true);
@@ -34,6 +40,9 @@ export default function TutorContentManagementPage() {
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [uploadFile, setUploadFile] = useState<File>();
   const [lastSaved, setLastSaved] = useState<string>();
+  // Every write ends in an outline re-read, so a second write started against the rows still
+  // on screen would race the first one. One content mutation at a time, with its own spinner.
+  const [busy, setBusy] = useState<string>();
   const [form] = Form.useForm();
   const [reload, setReload] = useState(0);
 
@@ -85,7 +94,7 @@ export default function TutorContentManagementPage() {
         title: editor.item.title, status: editor.item.status,
         material_type: editor.item.material_type,
         content: editor.item.content, file_url: editor.item.file_url,
-      } : { status: "PUBLISHED", material_type: "TEXT" });
+      } : { status: "PUBLISHED", material_type: "TEXT", video_source: "UPLOAD" });
     }
   }, [editor, form]);
 
@@ -105,14 +114,24 @@ export default function TutorContentManagementPage() {
       }
       if (editor.kind === "material") {
         if (editor.item) {
-          // material_type is not patchable, so only the fields of the stored kind travel.
+          // material_type is not patchable, and a stored asset key may not travel through a
+          // JSON patch, so only the fields the server accepts for this row are sent.
           const patch = {
             title: values.title,
             status: values.status,
             ...(editor.item.material_type === "TEXT" ? { content: values.content } : {}),
-            ...(editor.item.material_type === "URL" ? { file_url: values.file_url } : {}),
+            ...(canPatchFileUrl(editor.item) ? { file_url: values.file_url } : {}),
           };
           await updateMaterial(editor.item.material_id, patch);
+        } else if (values.material_type === "VIDEO" && values.video_source === "LINK") {
+          // The JSON path is the only way to publish a video students can actually play:
+          // uploaded files are served as attachments, never streamed inline.
+          await createMaterial(editor.lesson.lesson_id, {
+            title: values.title,
+            material_type: "VIDEO",
+            status: values.status,
+            file_url: values.file_url,
+          });
         } else if (values.material_type === "DOCUMENT" || values.material_type === "VIDEO") {
           if (!uploadFile) throw new Error("Choose a file to upload with this material.");
           await uploadMaterial(editor.lesson.lesson_id, { title: values.title, material_type: values.material_type, status: values.status }, uploadFile);
@@ -134,7 +153,7 @@ export default function TutorContentManagementPage() {
     } catch (cause) {
       if (denyIfForbidden(cause)) return;
       message.error(contentErrorText(cause));
-      if (isStaleTutorState(cause)) refresh();
+      if (isStaleContentState(cause)) refresh();
     }
     finally { setSaving(false); }
   }
@@ -160,7 +179,9 @@ export default function TutorContentManagementPage() {
   }
 
   async function toggleVisibility(kind: "chapter" | "lesson" | "material", id: string, published: boolean) {
+    if (busy) return;
     const status: ContentVisibility = published ? "PUBLISHED" : "HIDDEN";
+    setBusy(`visibility:${id}`);
     try {
       if (kind === "chapter") await updateChapter(id, { status });
       if (kind === "lesson") await updateLesson(id, { status });
@@ -174,8 +195,8 @@ export default function TutorContentManagementPage() {
     } catch (cause) {
       if (denyIfForbidden(cause)) return;
       message.error(contentErrorText(cause));
-      if (isStaleTutorState(cause)) refresh();
-    }
+      if (isStaleContentState(cause)) refresh();
+    } finally { setBusy(undefined); }
   }
 
   function visibilityTarget(kind: "lesson" | "material", id: string): Editor {
@@ -190,6 +211,8 @@ export default function TutorContentManagementPage() {
   }
 
   async function remove(kind: "chapter" | "lesson" | "material", id: string) {
+    if (busy) return;
+    setBusy(`delete:${id}`);
     try {
       if (kind === "chapter") await deleteChapter(id);
       if (kind === "lesson") await deleteLesson(id);
@@ -200,34 +223,87 @@ export default function TutorContentManagementPage() {
     } catch (cause) {
       if (denyIfForbidden(cause)) return;
       message.error(contentErrorText(cause));
-      if (isStaleTutorState(cause)) refresh();
-    }
+      if (isStaleContentState(cause)) refresh();
+    } finally { setBusy(undefined); }
   }
 
   async function moveChapter(index: number, offset: -1 | 1) {
-    if (!outline) return;
+    if (!outline || busy) return;
     const nextIndex = index + offset;
     if (nextIndex < 0 || nextIndex >= outline.chapters.length) return;
     const items = [...outline.chapters];
     [items[index], items[nextIndex]] = [items[nextIndex], items[index]];
-    try { await reorderChapters(classId, items.map((item) => item.chapter_id)); refresh(); }
-    catch (cause) { if (!denyIfForbidden(cause)) message.error(contentErrorText(cause)); }
+    setBusy("order:chapters");
+    try { await reorderChapters(classId, items.map((item) => item.chapter_id)); setLastSaved(new Date().toLocaleTimeString()); refresh(); }
+    catch (cause) { if (!denyIfForbidden(cause)) { message.error(contentErrorText(cause)); refresh(); } }
+    finally { setBusy(undefined); }
   }
 
   async function moveLesson(chapter: TutorChapter, index: number, offset: -1 | 1) {
+    if (busy) return;
     const nextIndex = index + offset;
     if (nextIndex < 0 || nextIndex >= chapter.lessons.length) return;
     const items = [...chapter.lessons];
     [items[index], items[nextIndex]] = [items[nextIndex], items[index]];
-    try { await reorderLessons(chapter.chapter_id, items.map((item) => item.lesson_id)); refresh(); }
-    catch (cause) { if (!denyIfForbidden(cause)) message.error(contentErrorText(cause)); }
+    setBusy(`order:${chapter.chapter_id}`);
+    try { await reorderLessons(chapter.chapter_id, items.map((item) => item.lesson_id)); setLastSaved(new Date().toLocaleTimeString()); refresh(); }
+    catch (cause) { if (!denyIfForbidden(cause)) { message.error(contentErrorText(cause)); refresh(); } }
+    finally { setBusy(undefined); }
   }
 
+  // The API has no material order endpoint, so a swap is two independent PATCHes. If only one
+  // of them lands, the positions on screen are no longer the stored ones: re-read the outline.
   async function moveMaterial(lesson: TutorLesson, index: number, offset: -1 | 1) {
+    if (busy) return;
     const nextIndex = index + offset;
     if (nextIndex < 0 || nextIndex >= lesson.materials.length) return;
-    try { await swapMaterialOrder(lesson.materials[index], lesson.materials[nextIndex]); refresh(); }
-    catch (cause) { if (!denyIfForbidden(cause)) message.error(contentErrorText(cause)); }
+    setBusy(`order:${lesson.lesson_id}`);
+    try { await swapMaterialOrder(lesson.materials[index], lesson.materials[nextIndex]); setLastSaved(new Date().toLocaleTimeString()); refresh(); }
+    catch (cause) { if (!denyIfForbidden(cause)) { message.error(contentErrorText(cause)); refresh(); } }
+    finally { setBusy(undefined); }
+  }
+
+  function linkField(label: string, video: boolean) {
+    return (
+      <Form.Item
+        name="file_url"
+        label={label}
+        rules={video
+          // ChapterService only trusts a known player host or a direct stream file extension.
+          ? [{ required: true }, { validator: (_, value) => isAllowedVideoUrl(value) ? Promise.resolve() : Promise.reject(new Error("Use a YouTube or Vimeo link, or a direct HTTPS .mp4/.webm address.")) }]
+          : [{ required: true }, { type: "url" }, { pattern: /^https:\/\//i, message: "Use an HTTPS link." }]}
+      >
+        <Input placeholder={video ? "https://youtube.com/watch?v=..." : "https://example.com/resource"} />
+      </Form.Item>
+    );
+  }
+
+  function uploadField(kind: "DOCUMENT" | "VIDEO") {
+    const limit = MATERIAL_UPLOAD_LIMITS[kind];
+    return (
+      <Form.Item label="File" required extra={limit.label}>
+        <Upload
+          accept={limit.accept}
+          maxCount={1}
+          fileList={uploadFile ? [{ uid: "upload", name: uploadFile.name }] : []}
+          beforeUpload={(file) => {
+            if (!materialExtensionAllowed(kind, file.name)) {
+              message.error("That file type is not supported for this material kind.");
+              return Upload.LIST_IGNORE;
+            }
+            if (file.size > limit.maxBytes) {
+              message.error(`This ${kind.toLowerCase()} file is larger than ${Math.round(limit.maxBytes / (1024 * 1024))} MB.`);
+              return Upload.LIST_IGNORE;
+            }
+            setUploadFile(file);
+            return false;
+          }}
+          onRemove={() => { setUploadFile(undefined); return true; }}
+        >
+          <Button icon={<PlusOutlined />}>Choose file</Button>
+        </Upload>
+      </Form.Item>
+    );
   }
 
   return (
@@ -236,7 +312,7 @@ export default function TutorContentManagementPage() {
         <Link className="tutor-page__back" to={`/tutor/classes/${classId}`}><ArrowLeftOutlined /> Back to Class Detail</Link>
         <div className="tutor-page__heading">
           <div><Typography.Title level={2}>Content Management</Typography.Title><Typography.Paragraph type="secondary">Organize chapters, lessons and materials for your classes.</Typography.Paragraph></div>
-          {!permissionDenied && <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor({ kind: "chapter" })}>Add Chapter</Button>}
+          {!permissionDenied && <Button type="primary" icon={<PlusOutlined />} disabled={Boolean(busy)} onClick={() => openEditor({ kind: "chapter" })}>Add Chapter</Button>}
         </div>
         {error && !permissionDenied && <Alert type="error" showIcon title="Could not load class content" description={error} />}
         {loading ? <div className="tutor-page__loading"><Spin /></div> : permissionDenied ? (
@@ -260,32 +336,33 @@ export default function TutorContentManagementPage() {
               {outline.chapters.map((chapter, chapterIndex) => (
                 <section className="tutor-chapter-card" key={chapter.chapter_id}>
                   <header className="tutor-chapter-card__header">
-                    <span className="tutor-reorder-buttons"><Button aria-label="Move chapter up" size="small" type="text" icon={<UpOutlined />} disabled={chapterIndex === 0} onClick={() => moveChapter(chapterIndex, -1)} /><Button aria-label="Move chapter down" size="small" type="text" icon={<DownOutlined />} disabled={chapterIndex === outline.chapters.length - 1} onClick={() => moveChapter(chapterIndex, 1)} /></span>
+                    <span className="tutor-reorder-buttons"><Button aria-label="Move chapter up" size="small" type="text" icon={<UpOutlined />} disabled={Boolean(busy) || chapterIndex === 0} onClick={() => moveChapter(chapterIndex, -1)} /><Button aria-label="Move chapter down" size="small" type="text" icon={<DownOutlined />} disabled={Boolean(busy) || chapterIndex === outline.chapters.length - 1} onClick={() => moveChapter(chapterIndex, 1)} /></span>
                     <div className="tutor-chapter-card__title"><strong>Chapter {chapterIndex + 1} · {chapter.title}</strong><span>{chapter.lessons.length} lessons · {chapter.lessons.reduce((sum, lesson) => sum + lesson.materials.length, 0)} materials</span></div>
-                    <div className="tutor-content-actions"><VisibilitySwitch status={chapter.status} onChange={(value) => toggleVisibility("chapter", chapter.chapter_id, value)} /><Button icon={<PlusOutlined />} onClick={() => openEditor({ kind: "lesson", chapter })}>Add Lesson</Button><Button type="text" icon={<EditOutlined />} aria-label={`Edit ${chapter.title}`} onClick={() => openEditor({ kind: "chapter", item: chapter })} /><Tooltip title="Delete chapter"><Popconfirm title="Delete this chapter and its contents?" description="The backend will keep it if learning records depend on it." onConfirm={() => remove("chapter", chapter.chapter_id)}><Button type="text" danger icon={<DeleteOutlined />} /></Popconfirm></Tooltip></div>
+                    <div className="tutor-content-actions"><VisibilitySwitch status={chapter.status} pending={busy === `visibility:${chapter.chapter_id}`} disabled={Boolean(busy)} onChange={(value) => toggleVisibility("chapter", chapter.chapter_id, value)} /><Button icon={<PlusOutlined />} disabled={Boolean(busy)} onClick={() => openEditor({ kind: "lesson", chapter })}>Add Lesson</Button><Button type="text" icon={<EditOutlined />} disabled={Boolean(busy)} aria-label={`Edit ${chapter.title}`} onClick={() => openEditor({ kind: "chapter", item: chapter })} /><Tooltip title="Delete chapter"><Popconfirm title="Delete this chapter and its contents?" description="The backend will keep it if learning records depend on it." onConfirm={() => remove("chapter", chapter.chapter_id)}><Button type="text" danger icon={<DeleteOutlined />} disabled={Boolean(busy)} aria-label={`Delete ${chapter.title}`} /></Popconfirm></Tooltip></div>
                   </header>
                   {chapter.lessons.length > 0 && <div className="tutor-lesson-list">
                     {chapter.lessons.map((lesson, lessonIndex) => (
                       <article className="tutor-lesson-card" key={lesson.lesson_id}>
                         <header className="tutor-lesson-card__header">
-                          <span className="tutor-reorder-buttons"><Button aria-label="Move lesson up" size="small" type="text" icon={<UpOutlined />} disabled={lessonIndex === 0} onClick={() => moveLesson(chapter, lessonIndex, -1)} /><Button aria-label="Move lesson down" size="small" type="text" icon={<DownOutlined />} disabled={lessonIndex === chapter.lessons.length - 1} onClick={() => moveLesson(chapter, lessonIndex, 1)} /></span>
+                          <span className="tutor-reorder-buttons"><Button aria-label="Move lesson up" size="small" type="text" icon={<UpOutlined />} disabled={Boolean(busy) || lessonIndex === 0} onClick={() => moveLesson(chapter, lessonIndex, -1)} /><Button aria-label="Move lesson down" size="small" type="text" icon={<DownOutlined />} disabled={Boolean(busy) || lessonIndex === chapter.lessons.length - 1} onClick={() => moveLesson(chapter, lessonIndex, 1)} /></span>
                           <div className="tutor-chapter-card__title"><strong>{chapterIndex + 1}.{lessonIndex + 1} · {lesson.title}</strong><span>{lesson.estimated_duration ?? "—"} mins{lesson.status === "HIDDEN" ? " · Hidden from students" : ""}{chapter.status === "HIDDEN" && lesson.status === "PUBLISHED" ? " · Published, but hidden with its chapter" : ""}</span></div>
-                          <div className="tutor-content-actions"><VisibilitySwitch status={lesson.status} onChange={(value) => toggleVisibility("lesson", lesson.lesson_id, value)} /><Button size="small" type="text" icon={<EditOutlined />} aria-label={`Edit ${lesson.title}`} onClick={() => openEditor({ kind: "lesson", chapter, item: lesson })} /><Popconfirm title="Delete this lesson?" onConfirm={() => remove("lesson", lesson.lesson_id)}><Button size="small" type="text" danger icon={<DeleteOutlined />} /></Popconfirm></div>
+                          <div className="tutor-content-actions"><VisibilitySwitch status={lesson.status} pending={busy === `visibility:${lesson.lesson_id}`} disabled={Boolean(busy)} onChange={(value) => toggleVisibility("lesson", lesson.lesson_id, value)} /><Button size="small" type="text" icon={<EditOutlined />} disabled={Boolean(busy)} aria-label={`Edit ${lesson.title}`} onClick={() => openEditor({ kind: "lesson", chapter, item: lesson })} /><Popconfirm title="Delete this lesson?" onConfirm={() => remove("lesson", lesson.lesson_id)}><Button size="small" type="text" danger icon={<DeleteOutlined />} disabled={Boolean(busy)} aria-label={`Delete ${lesson.title}`} /></Popconfirm></div>
                         </header>
+                        {lesson.materials.length === 0 && <Typography.Text className="tutor-material-empty" type="secondary">No materials in this lesson yet.</Typography.Text>}
                         {lesson.materials.map((material, materialIndex) => <div className="tutor-material-row" key={material.material_id}>
-                          <span className="tutor-reorder-buttons"><Button aria-label={`Move ${material.title} up`} size="small" type="text" icon={<UpOutlined />} disabled={materialIndex === 0} onClick={() => moveMaterial(lesson, materialIndex, -1)} /><Button aria-label={`Move ${material.title} down`} size="small" type="text" icon={<DownOutlined />} disabled={materialIndex === lesson.materials.length - 1} onClick={() => moveMaterial(lesson, materialIndex, 1)} /></span>
+                          <span className="tutor-reorder-buttons"><Button aria-label={`Move ${material.title} up`} size="small" type="text" icon={<UpOutlined />} disabled={Boolean(busy) || materialIndex === 0} onClick={() => moveMaterial(lesson, materialIndex, -1)} /><Button aria-label={`Move ${material.title} down`} size="small" type="text" icon={<DownOutlined />} disabled={Boolean(busy) || materialIndex === lesson.materials.length - 1} onClick={() => moveMaterial(lesson, materialIndex, 1)} /></span>
                           <div className="tutor-material-row__icon">{material.material_type === "URL" ? <LinkOutlined /> : material.material_type === "VIDEO" ? <VideoCameraOutlined /> : <FileTextOutlined />}</div>
-                          <div className="tutor-material-row__title"><strong>{material.title}</strong><span>{material.material_type === "TEXT" ? "Rich Text" : material.material_type}{material.material_type === "DOCUMENT" || material.material_type === "VIDEO" ? " · students download through the LMS API" : ""}{!material.content && !material.file_url ? " · no content stored yet" : ""}{material.status === "PUBLISHED" && (chapter.status === "HIDDEN" || lesson.status === "HIDDEN") ? " · Published, but hidden with its parent" : ""}</span></div>
-                          <VisibilitySwitch status={material.status} onChange={(value) => toggleVisibility("material", material.material_id, value)} />
-                          <Button type="text" icon={<EditOutlined />} aria-label={`Edit ${material.title}`} onClick={() => openEditor({ kind: "material", lesson, item: material })} />
-                          <Popconfirm title="Delete this material?" onConfirm={() => remove("material", material.material_id)}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`Delete ${material.title}`} /></Popconfirm>
+                          <div className="tutor-material-row__title"><strong>{material.title}</strong><span>{material.material_type === "TEXT" ? "Rich Text" : material.material_type}{material.material_type === "DOCUMENT" || material.material_type === "VIDEO" ? (isStoredMaterialFile(material.file_url) ? " · students download through the LMS API" : " · students open the external link") : ""}{!material.content && !material.file_url ? " · no content stored yet" : ""}{material.status === "PUBLISHED" && (chapter.status === "HIDDEN" || lesson.status === "HIDDEN") ? " · Published, but hidden with its parent" : ""}</span></div>
+                          <VisibilitySwitch status={material.status} pending={busy === `visibility:${material.material_id}`} disabled={Boolean(busy)} onChange={(value) => toggleVisibility("material", material.material_id, value)} />
+                          <Button type="text" icon={<EditOutlined />} disabled={Boolean(busy)} aria-label={`Edit ${material.title}`} onClick={() => openEditor({ kind: "material", lesson, item: material })} />
+                          <Popconfirm title="Delete this material?" onConfirm={() => remove("material", material.material_id)}><Button type="text" danger icon={<DeleteOutlined />} disabled={Boolean(busy)} aria-label={`Delete ${material.title}`} /></Popconfirm>
                         </div>)}
                         {(lesson.activities ?? []).map((activity) => (
                           <Link key={activity.activity_id} to={`/classes/${classId}/lessons/${lesson.lesson_id}/activities/${activity.activity_id}`}>
                             {activity.activity_type === "QUIZ" ? "Open quiz" : "Open assignment"} · {activity.title}
                           </Link>
                         ))}
-                        <Button className="tutor-add-material" type="link" icon={<PlusOutlined />} onClick={() => openEditor({ kind: "material", lesson })}>Add Material</Button>
+                        <Button className="tutor-add-material" type="link" icon={<PlusOutlined />} disabled={Boolean(busy)} onClick={() => openEditor({ kind: "material", lesson })}>Add Material</Button>
                       </article>
                     ))}
                   </div>}
@@ -316,37 +393,42 @@ export default function TutorContentManagementPage() {
               ]}
             />}</Form.Item>}
             {editor?.kind === "material" && <Form.Item name="material_type" hidden><Input /></Form.Item>}
-            <Form.Item name="title" label={editor?.kind === "material" ? "Material Title" : editor?.kind === "lesson" ? "Lesson Title" : "Chapter Title"} rules={[{ required: true, whitespace: true }]}><Input /></Form.Item>
+            <Form.Item
+              name="title"
+              label={editor?.kind === "material" ? "Material Title" : editor?.kind === "lesson" ? "Lesson Title" : "Chapter Title"}
+              rules={editor?.kind === "material"
+                ? [{ required: true, whitespace: true }]
+                : [{ required: true, whitespace: true }, { max: CONTENT_TITLE_LIMIT, message: `Keep the title within ${CONTENT_TITLE_LIMIT} characters.` }]}
+            >
+              {editor?.kind === "material"
+                ? <Input />
+                : <Input maxLength={CONTENT_TITLE_LIMIT} showCount />}
+            </Form.Item>
             {editor?.kind !== "material" && <Form.Item name="description" label="Description"><Input.TextArea rows={3} /></Form.Item>}
             {editor?.kind === "lesson" && <Form.Item name="estimated_duration" label="Duration (minutes)"><InputNumber min={0} max={1440} style={{ width: "100%" }} /></Form.Item>}
-            {editor?.kind === "material" && <Form.Item noStyle shouldUpdate={(previous, current) => previous.material_type !== current.material_type}>{({ getFieldValue }) => {
+            {editor?.kind === "material" && <Form.Item noStyle shouldUpdate={(previous, current) => previous.material_type !== current.material_type || previous.video_source !== current.video_source}>{({ getFieldValue }) => {
               const materialType = getFieldValue("material_type") as MaterialKind;
               if (materialType === "TEXT") return <Form.Item name="content" label="Content" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={6} /></Form.Item>;
-              if (materialType === "URL") return <Form.Item name="file_url" label="HTTPS link" rules={[{ required: true }, { type: "url" }, { pattern: /^https:\/\//i, message: "Use an HTTPS link." }]}><Input placeholder="https://example.com/resource" /></Form.Item>;
-              if (editor.item) return <Typography.Text type="secondary">The stored file is replaced by uploading a new material; the API has no in-place asset swap.</Typography.Text>;
-              const limit = MATERIAL_UPLOAD_LIMITS[materialType as "DOCUMENT" | "VIDEO"];
-              return <Form.Item label="File" required extra={limit.label}>
-                <Upload
-                  accept={limit.accept}
-                  maxCount={1}
-                  fileList={uploadFile ? [{ uid: "upload", name: uploadFile.name }] : []}
-                  beforeUpload={(file) => {
-                    if (!materialExtensionAllowed(materialType as "DOCUMENT" | "VIDEO", file.name)) {
-                      message.error(`That file type is not supported for this material kind.`);
-                      return Upload.LIST_IGNORE;
-                    }
-                    if (file.size > limit.maxBytes) {
-                      message.error(`This ${materialType.toLowerCase()} file is larger than ${Math.round(limit.maxBytes / (1024 * 1024))} MB.`);
-                      return Upload.LIST_IGNORE;
-                    }
-                    setUploadFile(file);
-                    return false;
-                  }}
-                  onRemove={() => { setUploadFile(undefined); return true; }}
-                >
-                  <Button icon={<PlusOutlined />}>Choose file</Button>
-                </Upload>
-              </Form.Item>;
+              if (materialType === "URL") return linkField("HTTPS link", false);
+              if (editor.item) {
+                // Only an external address is patchable. A stored key belongs to the upload
+                // pipeline, so replacing the bytes means deleting the row and uploading again.
+                return canPatchFileUrl(editor.item)
+                  ? linkField(materialType === "VIDEO" ? "Video link" : "HTTPS link", materialType === "VIDEO")
+                  : <Typography.Text type="secondary">The stored file is replaced by uploading a new material; the API has no in-place asset swap.</Typography.Text>;
+              }
+              if (materialType === "VIDEO") return <>
+                <Form.Item name="video_source" label="Video source" extra="Uploaded videos are served as downloads. An external link is what students can play in the browser.">
+                  <Radio.Group
+                    optionType="button"
+                    buttonStyle="solid"
+                    options={[{ value: "UPLOAD", label: "Upload file" }, { value: "LINK", label: "External link" }]}
+                    onChange={() => setUploadFile(undefined)}
+                  />
+                </Form.Item>
+                {getFieldValue("video_source") === "LINK" ? linkField("Video link", true) : uploadField("VIDEO")}
+              </>;
+              return uploadField("DOCUMENT");
             }}</Form.Item>}
             <Form.Item name="status" label="Visibility" rules={[{ required: true }]}><Select options={[{ value: "PUBLISHED", label: "Published" }, { value: "HIDDEN", label: "Hidden" }]} /></Form.Item>
           </Form>
@@ -356,6 +438,13 @@ export default function TutorContentManagementPage() {
   );
 }
 
-function VisibilitySwitch({ status, onChange }: { status: ContentVisibility; onChange: (published: boolean) => void }) {
-  return <span className="tutor-visibility"><Switch size="small" checked={status === "PUBLISHED"} onChange={onChange} /><span>{status === "PUBLISHED" ? "Published" : "Hidden"}</span></span>;
+// ChapterService accepts a file_url patch for URL rows and for VIDEO rows addressing an
+// external resource. A stored key is rejected, because swapping it would orphan the file.
+function canPatchFileUrl(material: TutorMaterial) {
+  return material.material_type === "URL"
+    || (material.material_type === "VIDEO" && !isStoredMaterialFile(material.file_url));
+}
+
+function VisibilitySwitch({ status, pending, disabled, onChange }: { status: ContentVisibility; pending?: boolean; disabled?: boolean; onChange: (published: boolean) => void }) {
+  return <span className="tutor-visibility"><Switch size="small" checked={status === "PUBLISHED"} loading={pending} disabled={disabled} onChange={onChange} /><span>{status === "PUBLISHED" ? "Published" : "Hidden"}</span></span>;
 }

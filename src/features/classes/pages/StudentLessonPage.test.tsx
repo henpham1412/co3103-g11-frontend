@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -89,11 +90,14 @@ const textMaterial: ClassOutlineMaterial = {
 
 function renderLesson(lessonId = 'lesson-2') {
   return render(
-    <MemoryRouter initialEntries={[`/classes/class-123/lessons/${lessonId}`]}>
-      <Routes>
-        <Route path="/classes/:classId/lessons/:lessonId" element={<StudentLessonPage />} />
-      </Routes>
-    </MemoryRouter>,
+    // The material card reads its message surface from App.useApp().
+    <App>
+      <MemoryRouter initialEntries={[`/classes/class-123/lessons/${lessonId}`]}>
+        <Routes>
+          <Route path="/classes/:classId/lessons/:lessonId" element={<StudentLessonPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
 }
 
@@ -103,7 +107,12 @@ beforeEach(() => {
   api.getStudentLesson.mockResolvedValue(lesson)
   api.getStudentLessonMaterials.mockResolvedValue([textMaterial])
   api.downloadStudentMaterial.mockResolvedValue({ blob: new Blob(['notes']), filename: 'notes.pdf' })
-  vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:notes'), revokeObjectURL: vi.fn() })
+  // URL stays constructible: the material model parses addresses with `new URL(...)`, and an
+  // object spread would turn every external link into "unavailable" without failing loudly.
+  vi.stubGlobal('URL', class extends URL {
+    static createObjectURL = vi.fn(() => 'blob:notes')
+    static revokeObjectURL = vi.fn()
+  })
 })
 
 describe('FE-5 student lesson', () => {
@@ -183,5 +192,41 @@ describe('FE-5 student lesson', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Download material' }))
 
     await waitFor(() => expect(api.downloadStudentMaterial).toHaveBeenCalledWith('/materials/files/slides.pdf'))
+  })
+
+  it('opens an external video address instead of downloading it through the LMS', async () => {
+    api.getStudentLessonMaterials.mockResolvedValue([{
+      ...textMaterial,
+      title: 'Walkthrough',
+      material_type: 'VIDEO',
+      content: null,
+      file_url: 'https://youtube.com/watch?v=abc',
+    }])
+
+    renderLesson()
+
+    const link = await screen.findByRole('link', { name: 'Open external resource' })
+    expect(link).toHaveAttribute('href', 'https://youtube.com/watch?v=abc')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(screen.queryByRole('button', { name: 'Download material' })).not.toBeInTheDocument()
+    expect(api.downloadStudentMaterial).not.toHaveBeenCalled()
+  })
+
+  it('reports a download the server refuses without leaving the button spinning', async () => {
+    api.getStudentLessonMaterials.mockResolvedValue([{
+      ...textMaterial,
+      title: 'Slides',
+      material_type: 'DOCUMENT',
+      content: null,
+      file_url: '/api/v1/materials/files/slides.pdf',
+    }])
+    api.downloadStudentMaterial.mockRejectedValue(apiFailure(404, 'FILE_NOT_FOUND'))
+
+    renderLesson()
+    const button = await screen.findByRole('button', { name: 'Download material' })
+    fireEvent.click(button)
+
+    expect(await screen.findByText('The server refused the request.')).toBeInTheDocument()
+    await waitFor(() => expect(button).not.toHaveClass('ant-btn-loading'))
   })
 })

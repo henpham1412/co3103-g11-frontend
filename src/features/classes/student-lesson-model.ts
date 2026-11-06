@@ -1,3 +1,4 @@
+import { isHttpsUrl, isStoredMaterialFile } from "./material-source";
 import type { ClassOutlineLesson, ClassOutlineMaterial, ClassOutlineResponse } from "./types";
 
 export interface NavigableLesson extends ClassOutlineLesson {
@@ -26,15 +27,9 @@ export function getLessonNavigation(
 
 export function getMaterialDisplay(material: ClassOutlineMaterial): MaterialDisplay {
   if (material.material_type === "TEXT") return material.content ? "text" : "unavailable";
-  if (material.material_type === "URL") return isHttpsUrl(material.file_url) ? "link" : "unavailable";
-  return material.file_url ? "file" : "unavailable";
-}
-
-function isHttpsUrl(value: string | null) {
-  if (!value) return false;
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
+  if (!material.file_url) return "unavailable";
+  // An uploaded DOCUMENT or VIDEO is an attachment behind the API; a VIDEO can also carry an
+  // external YouTube/Vimeo/.mp4 address, which the LMS neither hosts nor streams.
+  if (isStoredMaterialFile(material.file_url)) return "file";
+  return isHttpsUrl(material.file_url) ? "link" : "unavailable";
 }

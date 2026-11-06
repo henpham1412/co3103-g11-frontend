@@ -76,4 +76,12 @@ describe('material display', () => {
     expect(getMaterialDisplay(material({ material_type: 'VIDEO', file_url: '/api/v1/materials/files/a.mp4' }))).toBe('file')
     expect(getMaterialDisplay(material({ material_type: 'DOCUMENT', file_url: null }))).toBe('unavailable')
   })
+
+  it('opens an external video address instead of downloading it through the LMS', () => {
+    // ChapterService accepts a YouTube/Vimeo player or a direct stream file for a VIDEO row,
+    // and the LMS neither hosts nor streams those bytes, so the download path cannot serve them.
+    expect(getMaterialDisplay(material({ material_type: 'VIDEO', file_url: 'https://youtube.com/watch?v=abc' }))).toBe('link')
+    expect(getMaterialDisplay(material({ material_type: 'VIDEO', file_url: 'https://cdn.example.org/clip.mp4' }))).toBe('link')
+    expect(getMaterialDisplay(material({ material_type: 'VIDEO', file_url: 'http://cdn.example.org/clip.mp4' }))).toBe('unavailable')
+  })
 })

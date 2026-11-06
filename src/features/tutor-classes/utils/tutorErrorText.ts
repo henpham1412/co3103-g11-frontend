@@ -48,6 +48,11 @@ const contentCodeMessages: Record<string, string> = {
   INVALID_MATERIAL_TYPE_FOR_UPLOAD: "Documents and videos are uploaded as files. Text and links use the form fields.",
   FILE_STORAGE_FAILED: "The file could not be stored. Try the upload again.",
   FILE_NOT_FOUND: "The stored file is no longer available.",
+  CONTENT_HAS_DEPENDENT_LEARNING_DATA: "Learning records already depend on this content, so the server keeps it. Hide it from students instead of deleting it.",
+  CHAPTER_NOT_FOUND: "That chapter no longer exists. The outline has been reloaded.",
+  LESSON_NOT_FOUND: "That lesson no longer exists. The outline has been reloaded.",
+  MATERIAL_NOT_FOUND: "That material no longer exists. The outline has been reloaded.",
+  CLASS_NOT_FOUND: "This class no longer exists.",
 };
 
 export function contentErrorText(error: unknown): string {
@@ -59,4 +64,18 @@ export function contentErrorText(error: unknown): string {
 export function isStaleTutorState(error: unknown): boolean {
   const code = normalizeApiError(error).code;
   return Boolean(code && staleCodes.has(code));
+}
+
+// A content write can also land on an item another tab already deleted. The recovery is the
+// same as for a stale roster: re-read the outline instead of leaving the row on screen.
+const staleContentCodes = new Set([
+  "CHAPTER_NOT_FOUND",
+  "LESSON_NOT_FOUND",
+  "MATERIAL_NOT_FOUND",
+  "CLASS_NOT_FOUND",
+]);
+
+export function isStaleContentState(error: unknown): boolean {
+  const code = normalizeApiError(error).code;
+  return Boolean(code && (staleContentCodes.has(code) || staleCodes.has(code)));
 }

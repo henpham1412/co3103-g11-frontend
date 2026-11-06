@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -103,11 +104,14 @@ function lessonWith(materials: TutorMaterial[]): TutorLesson {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/tutor/classes/class-123/content']}>
-      <Routes>
-        <Route path="/tutor/classes/:classId/content" element={<TutorContentManagementPage />} />
-      </Routes>
-    </MemoryRouter>,
+    // The page reads its message surface from App.useApp(), so the holder has to exist.
+    <App>
+      <MemoryRouter initialEntries={['/tutor/classes/class-123/content']}>
+        <Routes>
+          <Route path="/tutor/classes/:classId/content" element={<TutorContentManagementPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
 }
 
@@ -127,6 +131,11 @@ beforeEach(() => {
   contentApi.updateMaterial.mockResolvedValue(undefined)
   contentApi.uploadMaterial.mockResolvedValue(undefined)
   contentApi.swapMaterialOrder.mockResolvedValue(undefined)
+  contentApi.deleteChapter.mockResolvedValue(undefined)
+  contentApi.deleteLesson.mockResolvedValue(undefined)
+  contentApi.deleteMaterial.mockResolvedValue(undefined)
+  contentApi.reorderChapters.mockResolvedValue(undefined)
+  contentApi.reorderLessons.mockResolvedValue(undefined)
 })
 
 describe('FE-5 tutor content management', () => {
@@ -304,5 +313,141 @@ describe('FE-5 tutor content management', () => {
     expect(await screen.findByText('Class content is not available to your account')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add Chapter/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add Material/ })).not.toBeInTheDocument()
+  })
+
+  it('publishes an external video through the JSON endpoint instead of an upload', async () => {
+    renderPage()
+    const dialog = await openMaterialModal(/Add Material/)
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Video' }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'External link' }))
+    fireEvent.change(within(dialog).getByLabelText('Material Title'), { target: { value: 'Walkthrough' } })
+    fireEvent.change(within(dialog).getByLabelText('Video link'), { target: { value: 'https://youtube.com/watch?v=abc' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add Material' }))
+
+    await waitFor(() => expect(contentApi.createMaterial).toHaveBeenCalledWith('lesson-1', {
+      title: 'Walkthrough',
+      material_type: 'VIDEO',
+      status: 'PUBLISHED',
+      file_url: 'https://youtube.com/watch?v=abc',
+    }))
+    expect(contentApi.uploadMaterial).not.toHaveBeenCalled()
+  })
+
+  it('rejects a video address the server would refuse', async () => {
+    renderPage()
+    const dialog = await openMaterialModal(/Add Material/)
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Video' }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'External link' }))
+    fireEvent.change(within(dialog).getByLabelText('Material Title'), { target: { value: 'Walkthrough' } })
+    fireEvent.change(within(dialog).getByLabelText('Video link'), { target: { value: 'https://example.org/clip.avi' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add Material' }))
+
+    expect(await within(dialog).findByText(/YouTube or Vimeo link/)).toBeInTheDocument()
+    expect(contentApi.createMaterial).not.toHaveBeenCalled()
+    expect(contentApi.uploadMaterial).not.toHaveBeenCalled()
+  })
+
+  it('patches the link of an external video without sending a stored asset key', async () => {
+    contentApi.getTutorOutline.mockResolvedValue(outlineWith([lessonWith([
+      material({ material_type: 'VIDEO', title: 'Walkthrough', file_url: 'https://youtube.com/watch?v=abc', content: null }),
+    ])]))
+    renderPage()
+    const dialog = await openMaterialModal(/Edit Walkthrough/)
+
+    fireEvent.change(within(dialog).getByLabelText('Video link'), { target: { value: 'https://vimeo.com/123' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() => expect(contentApi.updateMaterial).toHaveBeenCalledWith('material-1', {
+      title: 'Walkthrough',
+      status: 'PUBLISHED',
+      file_url: 'https://vimeo.com/123',
+    }))
+  })
+
+  it('keeps a stored asset out of the material PATCH', async () => {
+    contentApi.getTutorOutline.mockResolvedValue(outlineWith([lessonWith([
+      material({ material_type: 'DOCUMENT', title: 'Slides', file_url: '/api/v1/materials/files/slides.pdf', content: null }),
+    ])]))
+    renderPage()
+    const dialog = await openMaterialModal(/Edit Slides/)
+
+    expect(within(dialog).getByText(/no in-place asset swap/)).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByLabelText('Material Title'), { target: { value: 'Slides v2' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() => expect(contentApi.updateMaterial).toHaveBeenCalledWith('material-1', {
+      title: 'Slides v2',
+      status: 'PUBLISHED',
+    }))
+  })
+
+  it('keeps a chapter title inside the 150 characters the server accepts', async () => {
+    renderPage()
+    const dialog = await openMaterialModal(/Add Chapter/)
+
+    expect(within(dialog).getByLabelText('Chapter Title')).toHaveAttribute('maxlength', '150')
+  })
+
+  it('says so when a lesson has no materials yet', async () => {
+    contentApi.getTutorOutline.mockResolvedValue(outlineWith([lessonWith([])]))
+
+    renderPage()
+
+    expect(await screen.findByText('No materials in this lesson yet.')).toBeInTheDocument()
+  })
+
+  it('blocks a second content write while the first one is still running', async () => {
+    let release: () => void = () => undefined
+    contentApi.updateChapter.mockImplementation(() => new Promise<void>((resolve) => { release = resolve }))
+    renderPage()
+    await screen.findByText(/Getting started/, {}, { timeout: 5000 })
+
+    fireEvent.click(screen.getAllByRole('switch')[0])
+    await waitFor(() => expect(contentApi.updateChapter).toHaveBeenCalledTimes(1))
+
+    expect(screen.getAllByRole('switch')[1]).toBeDisabled()
+    fireEvent.click(screen.getAllByRole('switch')[1])
+    expect(contentApi.updateLesson).not.toHaveBeenCalled()
+
+    release()
+    await waitFor(() => expect(screen.getAllByRole('switch')[0]).not.toBeDisabled())
+  })
+
+  it('re-reads the outline when only one of the two position patches lands', async () => {
+    renderPage()
+    await screen.findByText(/Getting started/, {}, { timeout: 5000 })
+    contentApi.swapMaterialOrder.mockRejectedValue(apiFailure(400, 'VALIDATION_ERROR'))
+    const outlineCallsBefore = contentApi.getTutorOutline.mock.calls.length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move Slides down' }))
+
+    expect(await screen.findByText('The server rejected some fields. Check the form and try again.')).toBeInTheDocument()
+    await waitFor(() => expect(contentApi.getTutorOutline.mock.calls.length).toBeGreaterThan(outlineCallsBefore))
+  })
+
+  it('explains a delete the server refuses because learning records depend on it', async () => {
+    contentApi.deleteMaterial.mockRejectedValue(apiFailure(409, 'CONTENT_HAS_DEPENDENT_LEARNING_DATA'))
+    renderPage()
+    await screen.findByText(/Getting started/, {}, { timeout: 5000 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Slides' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'OK' }))
+
+    expect(await screen.findByText(/Learning records already depend on this content/)).toBeInTheDocument()
+    expect(contentApi.deleteMaterial).toHaveBeenCalledWith('material-1')
+  })
+
+  it('reloads the outline when the material was already deleted elsewhere', async () => {
+    renderPage()
+    await screen.findByText(/Getting started/, {}, { timeout: 5000 })
+    contentApi.updateMaterial.mockRejectedValue(apiFailure(404, 'MATERIAL_NOT_FOUND'))
+    const outlineCallsBefore = contentApi.getTutorOutline.mock.calls.length
+
+    fireEvent.click(screen.getAllByRole('switch')[2])
+
+    expect(await screen.findByText('That material no longer exists. The outline has been reloaded.')).toBeInTheDocument()
+    await waitFor(() => expect(contentApi.getTutorOutline.mock.calls.length).toBeGreaterThan(outlineCallsBefore))
   })
 })
