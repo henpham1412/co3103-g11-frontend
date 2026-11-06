@@ -121,8 +121,8 @@ describe('FE-4 tutor class detail', () => {
     renderPage()
     await screen.findByText('Programming Foundations')
 
-    fireEvent.change(screen.getByPlaceholderText('Search by student identifier'), { target: { value: 'student-11' } })
-    fireEvent.keyDown(screen.getByPlaceholderText('Search by student identifier'), { key: 'Enter', code: 'Enter' })
+    fireEvent.change(screen.getByPlaceholderText('Search by name or email'), { target: { value: 'student-11' } })
+    fireEvent.keyDown(screen.getByPlaceholderText('Search by name or email'), { key: 'Enter', code: 'Enter' })
 
     await waitFor(() => expect(tutorApi.getTutorClassMembers).toHaveBeenCalledWith(
       'class-123',
@@ -214,6 +214,33 @@ describe('FE-4 tutor class detail', () => {
 
     await waitFor(() => expect(tutorApi.updateTutorClass).toHaveBeenCalled())
     await waitFor(() => expect(tutorApi.uploadClassThumbnail).toHaveBeenCalledWith('class-123', file))
+  })
+
+  it('closes membership actions while the class is archived', async () => {
+    classApi.getClassDetails.mockResolvedValue({ ...classDetails, status: 'ARCHIVED' })
+
+    renderPage()
+
+    expect(await screen.findByText('This class is archived')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled()
+  })
+
+  it('keeps a saved settings change when the thumbnail upload is refused', async () => {
+    tutorApi.uploadClassThumbnail.mockRejectedValue(apiFailure(413, 'FILE_TOO_LARGE', 'too large'))
+    renderPage()
+    await screen.findByText('Programming Foundations')
+    const detailCallsBefore = classApi.getClassDetails.mock.calls.length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Class Settings' }))
+    const file = new File(['x'], 'cover.png', { type: 'image/png' })
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+    expect(await screen.findByText(/Class settings were saved/)).toBeInTheDocument()
+    await waitFor(() => expect(classApi.getClassDetails.mock.calls.length).toBeGreaterThan(detailCallsBefore))
+    expect(tutorApi.updateTutorClass).toHaveBeenCalled()
   })
 
   it('refuses a thumbnail the storage contract cannot accept', async () => {

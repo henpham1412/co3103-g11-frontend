@@ -5,17 +5,41 @@ import { Link } from "react-router-dom";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
 import { getClassDetails } from "../../classes/api/classApi";
 import type { ClassCatalogItem } from "../../classes/types";
-import { createTutorClass, getTutorClasses, updateTutorClass } from "../api/tutorClassApi";
+import { createTutorClass, getTutorClassMembers, getTutorClasses, updateTutorClass } from "../api/tutorClassApi";
 import { normalizeApiError } from "@/api/apiError";
 import type { CreateTutorClass, TutorClass } from "../types";
 import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
 
 const PAGE_SIZE = 20;
+// GET /tutor/classes has no search or status parameter (DOC-05 §3.1.1). The largest
+// page the API accepts is 100, so the screen loads every page and filters locally.
+const FETCH_SIZE = 100;
+
+function validateClassCode(_: unknown, value: string) {
+  const code = value?.trim() ?? "";
+  if (!code) return Promise.reject(new Error("Enter a class code"));
+  if (code.length < 3 || code.length > 30 || !/^[A-Za-z0-9_-]+$/.test(code)) {
+    return Promise.reject(new Error("Use 3–30 letters, numbers, underscores or hyphens"));
+  }
+  return Promise.resolve();
+}
+
+function normalizedClass(values: CreateTutorClass): CreateTutorClass {
+  return {
+    title: values.title.trim(),
+    class_code: values.class_code.trim(),
+    description: values.description?.trim() || undefined,
+    prerequisites_description: values.prerequisites_description?.trim() || undefined,
+    max_capacity: values.max_capacity ?? undefined,
+    enrollment_policy: values.enrollment_policy,
+  };
+}
 
 export default function TutorClassManagementPage() {
   const [classes, setClasses] = useState<TutorClass[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [selectedDetails, setSelectedDetails] = useState<ClassCatalogItem>();
+  const [pendingCount, setPendingCount] = useState<number>();
   const [page, setPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [search, setSearch] = useState("");
@@ -36,13 +60,17 @@ export default function TutorClassManagementPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    getTutorClasses({ page, size: PAGE_SIZE, sort: "created_at,desc" }, controller.signal)
-      .then((result) => {
-        setClasses(result.items);
-        setTotalItems(result.total_items);
-        setSelectedId((current) => current && result.items.some((item) => item.class_id === current)
+    getTutorClasses({ page: 1, size: FETCH_SIZE, sort: "created_at,desc" }, controller.signal)
+      .then(async (first) => {
+        const rest = await Promise.all(Array.from({ length: Math.max(0, first.total_pages - 1) }, (_, index) =>
+          getTutorClasses({ page: index + 2, size: FETCH_SIZE, sort: "created_at,desc" }, controller.signal)));
+        if (controller.signal.aborted) return;
+        const items = [first.items, ...rest.map((result) => result.items)].flat();
+        setClasses(items);
+        setTotalItems(first.total_items);
+        setSelectedId((current) => current && items.some((item) => item.class_id === current)
           ? current
-          : result.items[0]?.class_id);
+          : items[0]?.class_id);
         setError(undefined);
         setPermissionDenied(false);
       })
@@ -53,29 +81,34 @@ export default function TutorClassManagementPage() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [page, reload]);
+  }, [reload]);
 
   useEffect(() => {
     if (!selectedId) return;
     const controller = new AbortController();
+    setPendingCount(undefined);
     getClassDetails(selectedId, controller.signal)
       .then(setSelectedDetails)
       .catch(() => { if (!controller.signal.aborted) setSelectedDetails(undefined); });
+    getTutorClassMembers(selectedId, { status: "PENDING", page: 1, size: 1 }, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setPendingCount(result.total_items); })
+      .catch(() => { if (!controller.signal.aborted) setPendingCount(undefined); });
     return () => controller.abort();
   }, [selectedId, reload]);
 
-  const visibleClasses = useMemo(() => classes.filter((item) => {
+  const filteredClasses = useMemo(() => classes.filter((item) => {
     const query = searchApplied.trim().toLowerCase();
     const matchesQuery = !query || `${item.title} ${item.class_code}`.toLowerCase().includes(query);
     return matchesQuery && (status === "ALL" || item.status === status);
   }), [classes, searchApplied, status]);
+  const visibleClasses = filteredClasses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   async function submitCreate() {
     const values = await form.validateFields().catch(() => undefined);
     if (!values) return;
     setSaving(true);
     try {
-      const created = await createTutorClass(values);
+      const created = await createTutorClass(normalizedClass(values));
       message.success("Class created.");
       setModalOpen(false);
       form.resetFields();
@@ -122,11 +155,11 @@ export default function TutorClassManagementPage() {
         {loading ? <div className="tutor-page__loading"><Spin /></div> : (
           <div className="tutor-class-grid">
             <section className="tutor-panel">
-              <h2>Classes</h2><div className="tutor-panel__sub">Classes owned by your tutor account · {totalItems} total</div>
+              <h2>Classes</h2><div className="tutor-panel__sub">Classes owned by your tutor account · {filteredClasses.length} shown · {totalItems} total. Title, class code and status are filtered here because the class list has no search parameter.</div>
               <div className="tutor-class-filters">
-                <Input prefix={<SearchOutlined />} placeholder="Search title or class code" value={search} onChange={(event) => setSearch(event.target.value)} onPressEnter={() => setSearchApplied(search)} />
-                <Select value={status} onChange={(value: "ALL" | "ACTIVE" | "ARCHIVED") => setStatus(value)} options={[{ value: "ALL", label: "All statuses" }, { value: "ACTIVE", label: "Active" }, { value: "ARCHIVED", label: "Archived" }]} />
-                <Button type="primary" onClick={() => setSearchApplied(search)}>Search</Button>
+                <Input prefix={<SearchOutlined />} placeholder="Search title or class code" value={search} onChange={(event) => setSearch(event.target.value)} onPressEnter={() => { setPage(1); setSearchApplied(search); }} />
+                <Select value={status} onChange={(value: "ALL" | "ACTIVE" | "ARCHIVED") => { setPage(1); setStatus(value); }} options={[{ value: "ALL", label: "All statuses" }, { value: "ACTIVE", label: "Active" }, { value: "ARCHIVED", label: "Archived" }]} />
+                <Button type="primary" onClick={() => { setPage(1); setSearchApplied(search); }}>Search</Button>
               </div>
               {visibleClasses.length === 0 ? <Empty description={error ? "Classes unavailable" : "No classes match your search"} /> : (
                 <>
@@ -134,10 +167,10 @@ export default function TutorClassManagementPage() {
                     {visibleClasses.map((item) => <tr key={item.class_id} className={selectedId === item.class_id ? "is-selected" : ""}>
                       <td><button className="tutor-table__select" onClick={() => { setSelectedDetails(undefined); setSelectedId(item.class_id); }}><strong>{item.title}</strong><span>{item.class_code}</span></button></td>
                       <td>{item.status === "ARCHIVED" ? "—" : selectedId === item.class_id && selectedDetails ? `${selectedDetails.active_member_count}/${selectedDetails.max_capacity ?? "∞"}` : "—"}</td>
-                      <td>—</td><td><Tag color={item.status === "ACTIVE" ? "green" : "default"}>{item.status}</Tag></td>
+                      <td>{selectedId === item.class_id && pendingCount !== undefined ? pendingCount : "—"}</td><td><Tag color={item.status === "ACTIVE" ? "green" : "default"}>{item.status}</Tag></td>
                     </tr>)}
                   </tbody></table></div>
-                  <Pagination style={{ marginTop: 16, textAlign: "right" }} current={page} pageSize={PAGE_SIZE} total={totalItems} showSizeChanger={false} onChange={(nextPage) => { setLoading(true); setPage(nextPage); }} />
+                  <Pagination style={{ marginTop: 16, textAlign: "right" }} current={page} pageSize={PAGE_SIZE} total={filteredClasses.length} showSizeChanger={false} onChange={setPage} />
                 </>
               )}
             </section>
@@ -157,10 +190,10 @@ export default function TutorClassManagementPage() {
         )}
         <Modal title="Create Class" open={modalOpen} onCancel={() => setModalOpen(false)} onOk={submitCreate} confirmLoading={saving} okText="Create Class">
           <Form form={form} layout="vertical" initialValues={{ enrollment_policy: "APPROVAL_REQUIRED" }}>
-            <Form.Item name="title" label="Title" rules={[{ required: true }, { max: 150 }]}><Input /></Form.Item>
-            <Form.Item name="class_code" label="Class Code" rules={[{ required: true }, { min: 3, max: 30 }, { pattern: /^[A-Za-z0-9_-]+$/ }]}><Input /></Form.Item>
+            <Form.Item name="title" label="Title" rules={[{ required: true, whitespace: true }, { max: 150 }]}><Input /></Form.Item>
+            <Form.Item name="class_code" label="Class Code" rules={[{ validator: validateClassCode }]}><Input /></Form.Item>
             <Form.Item name="description" label="Description" rules={[{ max: 2000 }]}><Input.TextArea rows={3} /></Form.Item>
-            <Form.Item name="max_capacity" label="Maximum Capacity"><InputNumber min={1} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="max_capacity" label="Maximum Capacity"><InputNumber min={1} precision={0} style={{ width: "100%" }} /></Form.Item>
             <Form.Item name="prerequisites_description" label="Prerequisites"><Input /></Form.Item>
             <Form.Item name="enrollment_policy" label="Enrollment Policy" rules={[{ required: true }]}><Select options={[{ value: "OPEN", label: "Open enrollment" }, { value: "APPROVAL_REQUIRED", label: "Approval required" }]} /></Form.Item>
             <Form.Item label="Lifecycle Status"><Tag color="green">ACTIVE</Tag></Form.Item>

@@ -88,8 +88,12 @@ export function updateDemoTutorMember(classId: string, memberId: string, action:
   const list = members.get(classId) ?? [];
   const member = list.find((item) => item.class_member_id === memberId);
   if (!member) throw new Error("Demo membership not found.");
-  if (action === "remove" || action === "reject") {
-    members.set(classId, list.filter((item) => item.class_member_id !== memberId));
+  // DOC-05 keeps the row: reject becomes REJECTED and remove becomes INACTIVE.
+  if (action === "reject") {
+    member.status = "REJECTED";
+    member.joined_at = null;
+  } else if (action === "remove") {
+    member.status = "INACTIVE";
   } else {
     member.status = "ACTIVE";
     member.joined_at = new Date().toISOString();

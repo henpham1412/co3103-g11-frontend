@@ -8,6 +8,7 @@ import type { TutorClass } from '../types'
 
 const tutorApi = vi.hoisted(() => ({
   createTutorClass: vi.fn(),
+  getTutorClassMembers: vi.fn(),
   getTutorClasses: vi.fn(),
   updateTutorClass: vi.fn(),
 }))
@@ -61,6 +62,9 @@ beforeEach(() => {
   classApi.getClassDetails.mockResolvedValue(classDetails)
   tutorApi.createTutorClass.mockResolvedValue(tutorClass)
   tutorApi.updateTutorClass.mockResolvedValue(tutorClass)
+  tutorApi.getTutorClassMembers.mockResolvedValue({
+    items: [], page: 1, size: 1, total_items: 2, total_pages: 1,
+  })
 })
 
 async function openCreateModal() {
@@ -86,6 +90,43 @@ describe('FE-4 tutor class management', () => {
       class_code: 'MA001',
       enrollment_policy: 'APPROVAL_REQUIRED',
     })))
+  })
+
+  it('trims the class code before applying the server pattern', async () => {
+    renderPage()
+    const modal = await openCreateModal()
+    fireEvent.change(modal.getByLabelText('Title'), { target: { value: '  Discrete Math  ' } })
+    fireEvent.change(modal.getByLabelText('Class Code'), { target: { value: '  MA001  ' } })
+    fireEvent.click(modal.getByRole('button', { name: 'Create Class' }))
+
+    await waitFor(() => expect(tutorApi.createTutorClass).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Discrete Math',
+      class_code: 'MA001',
+    })))
+  })
+
+  it('filters title and class code across every page the list endpoint returns', async () => {
+    const later = { ...tutorClass, class_id: 'class-900', class_code: 'MA900', title: 'Later Algebra' }
+    tutorApi.getTutorClasses
+      .mockResolvedValueOnce({ items: [tutorClass], page: 1, size: 100, total_items: 2, total_pages: 2 })
+      .mockResolvedValueOnce({ items: [later], page: 2, size: 100, total_items: 2, total_pages: 2 })
+
+    renderPage()
+    const table = (await screen.findByText('Later Algebra')).closest('table')
+    expect(table).not.toBeNull()
+    fireEvent.change(screen.getByPlaceholderText('Search title or class code'), { target: { value: 'MA900' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    expect(within(table as HTMLElement).getByText('Later Algebra')).toBeInTheDocument()
+    expect(within(table as HTMLElement).queryByText('Programming Foundations')).not.toBeInTheDocument()
+    expect(tutorApi.getTutorClasses).toHaveBeenCalledWith(
+      { page: 1, size: 100, sort: 'created_at,desc' },
+      expect.anything(),
+    )
+    expect(tutorApi.getTutorClasses).toHaveBeenCalledWith(
+      { page: 2, size: 100, sort: 'created_at,desc' },
+      expect.anything(),
+    )
   })
 
   it('rejects a class code the server already assigned to another class', async () => {

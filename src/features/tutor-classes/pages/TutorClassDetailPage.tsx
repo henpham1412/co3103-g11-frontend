@@ -12,6 +12,7 @@ import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
 const PAGE_SIZE = 20;
 const THUMBNAIL_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const THUMBNAIL_MAX_BYTES = 5 * 1024 * 1024;
+const ROSTER_QUERY_MAX = 100;
 const ROSTER_SORTS = [
   { value: "requested_at,desc", label: "Requested, newest first" },
   { value: "requested_at,asc", label: "Requested, oldest first" },
@@ -119,21 +120,41 @@ export default function TutorClassDetailPage() {
   async function saveSettings() {
     const values = await form.validateFields().catch(() => undefined);
     if (!values) return;
+    const settings = {
+      ...values,
+      title: typeof values.title === "string" ? values.title.trim() : values.title,
+      description: typeof values.description === "string" ? values.description.trim() : values.description,
+      prerequisites_description: typeof values.prerequisites_description === "string"
+        ? values.prerequisites_description.trim()
+        : values.prerequisites_description,
+    };
     setSaving(true);
     try {
-      await updateTutorClass(classId, values);
-      if (thumbnailFile) await uploadClassThumbnail(classId, thumbnailFile);
+      try {
+        await updateTutorClass(classId, settings);
+      } catch (cause) {
+        message.error(tutorErrorText(cause));
+        if (isStaleTutorState(cause)) refresh();
+        return;
+      }
+      if (thumbnailFile) {
+        try {
+          await uploadClassThumbnail(classId, thumbnailFile);
+        } catch (cause) {
+          message.warning(`Class settings were saved. The thumbnail was not replaced: ${tutorErrorText(cause)}`);
+          setEditOpen(false);
+          refresh();
+          return;
+        }
+      }
       message.success("Class settings updated.");
       setEditOpen(false);
       refresh();
-    } catch (cause) {
-      message.error(tutorErrorText(cause));
-      if (isStaleTutorState(cause)) refresh();
-    }
-    finally { setSaving(false); }
+    } finally { setSaving(false); }
   }
 
   const seatsAvailable = details?.max_capacity == null ? null : Math.max(0, details.max_capacity - details.active_member_count);
+  const archived = details?.status === "ARCHIVED";
 
   return (
     <TutorWorkspaceLayout currentPage="Class Detail">
@@ -158,20 +179,21 @@ export default function TutorClassDetailPage() {
           </section>
 
           <section className="tutor-page__section tutor-panel">
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">Membership is retained when a student leaves or is removed. Search and ordering run on the server, so they apply to both rosters below.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">Search matches the student name or email on the server, up to {ROSTER_QUERY_MAX} characters, and applies to both lists. The roster response only includes a student id, so names are not shown. Ordering is also applied by the server.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
+            {archived && <Alert className="tutor-page__notice" type="info" showIcon title="This class is archived" description="Approve, reject and remove stay closed. Set the lifecycle back to Active before changing membership." />}
             <div className="tutor-class-filters">
-              <Input.Search allowClear placeholder="Search by student identifier" value={search} onChange={(event) => setSearch(event.target.value)} onSearch={runRosterSearch} />
-              <Select value={sort} onChange={setSort} options={ROSTER_SORTS} aria-label="Roster ordering" />
+              <Input.Search allowClear maxLength={ROSTER_QUERY_MAX} placeholder="Search by name or email" value={search} onChange={(event) => setSearch(event.target.value)} onSearch={runRosterSearch} />
+              <Select value={sort} onChange={(value) => { setActivePage(1); setPendingPage(1); setSort(value); }} options={ROSTER_SORTS} aria-label="Roster ordering" />
               <Button onClick={runRosterSearch}>Apply filters</Button>
             </div>
-            {activeMembers?.items.length ? <><MemberTable members={activeMembers.items} busyMember={busyMember} onRemove={setRemoveCandidate} /><Pagination style={{ marginTop: 16, textAlign: "right" }} current={activePage} pageSize={PAGE_SIZE} total={activeMembers.total_items} showSizeChanger={false} onChange={setActivePage} /></> : <Empty description={searchApplied ? "No active member matches this search" : "No active members"} />}
+            {activeMembers?.items.length ? <><MemberTable members={activeMembers.items} busyMember={busyMember} archived={archived} onRemove={setRemoveCandidate} /><Pagination style={{ marginTop: 16, textAlign: "right" }} current={activePage} pageSize={PAGE_SIZE} total={activeMembers.total_items} showSizeChanger={false} onChange={setActivePage} /></> : <Empty description={searchApplied ? "No active member matches this search" : "No active members"} />}
           </section>
 
           <section className="tutor-page__section tutor-panel">
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Pending Requests <Tag color="orange">{pendingMembers?.total_items ?? 0}</Tag></h2><div className="tutor-panel__sub">Approve moves a request to ACTIVE and consumes a seat. Reject removes the request without touching the student account. Pending requests do not consume seats.</div></div><span>{seatsAvailable === null ? "Capacity unlimited" : `${seatsAvailable} seats available`}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Pending Requests <Tag color="orange">{pendingMembers?.total_items ?? 0}</Tag></h2><div className="tutor-panel__sub">Approve moves a request to ACTIVE and consumes a seat. Reject marks it REJECTED and keeps the membership record, so the student can request again. Pending requests do not consume seats.</div></div><span>{seatsAvailable === null ? "Capacity unlimited" : `${seatsAvailable} seats available`}</span></div>
             {pendingMembers?.items.length ? <>
-              {seatsAvailable === 0 && <Alert className="tutor-page__notice" type="warning" showIcon title="This class is full" description="Approving needs a free seat, so approvals are blocked until capacity increases or a member is removed." />}
-              <PendingTable members={pendingMembers.items} busyMember={busyMember} canApprove={seatsAvailable !== 0} onAction={act} />
+              {seatsAvailable === 0 && !archived && <Alert className="tutor-page__notice" type="warning" showIcon title="This class is full" description="Approving needs a free seat, so approvals are blocked until capacity increases or a member is removed." />}
+              <PendingTable members={pendingMembers.items} busyMember={busyMember} archived={archived} canApprove={!archived && seatsAvailable !== 0} onAction={act} />
               <Pagination style={{ marginTop: 16, textAlign: "right" }} current={pendingPage} pageSize={PAGE_SIZE} total={pendingMembers.total_items} showSizeChanger={false} onChange={setPendingPage} />
             </> : <Empty description={searchApplied ? "No pending request matches this search" : "No pending requests"} />}
           </section>
@@ -179,10 +201,10 @@ export default function TutorClassDetailPage() {
 
         <Modal title="Edit Class Settings" open={editOpen} onCancel={() => setEditOpen(false)} onOk={saveSettings} confirmLoading={saving} okText="Save Changes">
           <Form form={form} layout="vertical">
-            <Form.Item name="title" label="Title" rules={[{ required: true }, { max: 150 }]}><Input /></Form.Item>
+            <Form.Item name="title" label="Title" rules={[{ required: true, whitespace: true }, { max: 150 }]}><Input /></Form.Item>
             <Form.Item label="Class Code"><Input value={details?.class_code} disabled /></Form.Item>
             <Form.Item name="description" label="Description" rules={[{ max: 2000 }]}><Input.TextArea rows={3} /></Form.Item>
-            <Form.Item name="max_capacity" label="Maximum Capacity" extra={`Currently ${details?.active_member_count ?? 0} students hold a seat.`}><InputNumber min={1} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="max_capacity" label="Maximum Capacity" extra={`Currently ${details?.active_member_count ?? 0} students hold a seat. Leave empty for unlimited.`}><InputNumber min={1} precision={0} style={{ width: "100%" }} /></Form.Item>
             <Form.Item name="prerequisites_description" label="Prerequisites"><Input /></Form.Item>
             <Form.Item name="enrollment_policy" label="Enrollment Policy"><Select options={[{ value: "OPEN", label: "Open enrollment" }, { value: "APPROVAL_REQUIRED", label: "Approval required" }]} /></Form.Item>
             <Form.Item name="status" label="Lifecycle Status"><Select options={[{ value: "ACTIVE", label: "Active" }, { value: "ARCHIVED", label: "Archived" }]} /></Form.Item>
@@ -212,21 +234,25 @@ export default function TutorClassDetailPage() {
           </Form>
         </Modal>
         <Modal title="Remove Student from Class?" open={Boolean(removeCandidate)} onCancel={() => setRemoveCandidate(undefined)} onOk={confirmRemove} confirmLoading={busyMember === removeCandidate?.class_member_id} okText="Remove Member" okButtonProps={{ danger: true }}>
-          {removeCandidate && <div className="tutor-remove-confirm"><div className="tutor-remove-confirm__student"><Avatar>{removeCandidate.student_id.slice(0, 2).toUpperCase()}</Avatar><div><strong>Student · {removeCandidate.student_id.slice(0, 8)}</strong><span>{details?.title} · {details?.class_code}</span></div></div><p>Removing this active student revokes access to class content and releases their seat.</p><div className="tutor-remove-confirm__records"><strong>Learning records are retained</strong><span>Completion history, submissions and grades are kept. The student account is not deleted.</span></div></div>}
+          {removeCandidate && <div className="tutor-remove-confirm"><div className="tutor-remove-confirm__student"><Avatar>{removeCandidate.student_id.slice(0, 2).toUpperCase()}</Avatar><div><strong>Student · {removeCandidate.student_id.slice(0, 8)}</strong><span>{details?.title} · {details?.class_code}</span></div></div><p>Removing this active student sets the membership to INACTIVE, revokes class content, and releases their seat. The membership record stays.</p><div className="tutor-remove-confirm__records"><strong>Learning records are retained</strong><span>Completion history, submissions and grades are kept. The student account is not deleted.</span></div></div>}
         </Modal>
       </main>
     </TutorWorkspaceLayout>
   );
 }
 
-function MemberTable({ members, busyMember, onRemove }: { members: TutorMemberPage["items"]; busyMember?: string; onRemove: (member: TutorMember) => void }) {
-  return <div style={{ overflowX: "auto" }}><table className="tutor-table"><thead><tr><th>Student</th><th>Membership</th><th>Progress</th><th>Actions</th></tr></thead><tbody>
-    {members.map((member) => <tr key={member.class_member_id}><td><Avatar size={30}>{member.student_id.slice(0, 2).toUpperCase()}</Avatar> <span title={member.student_id}>Student · {member.student_id.slice(0, 8)}</span></td><td><Tag color="green">Active</Tag></td><td>—</td><td><div className="tutor-member-actions"><Button danger loading={busyMember === member.class_member_id} onClick={() => onRemove(member)}>Remove</Button></div></td></tr>)}
+function MemberTable({ members, busyMember, archived, onRemove }: { members: TutorMemberPage["items"]; busyMember?: string; archived: boolean; onRemove: (member: TutorMember) => void }) {
+  return <div style={{ overflowX: "auto" }}><table className="tutor-table"><thead><tr><th>Student</th><th>Membership</th><th>Actions</th></tr></thead><tbody>
+    {members.map((member) => <tr key={member.class_member_id}><td><Avatar size={30}>{member.student_id.slice(0, 2).toUpperCase()}</Avatar> <span title={member.student_id}>Student · {member.student_id.slice(0, 8)}</span></td><td><Tag color="green">{member.status}</Tag></td><td><div className="tutor-member-actions"><Button danger disabled={archived || (Boolean(busyMember) && busyMember !== member.class_member_id)} loading={busyMember === member.class_member_id} onClick={() => onRemove(member)}>Remove</Button></div></td></tr>)}
   </tbody></table></div>;
 }
 
-function PendingTable({ members, busyMember, canApprove, onAction }: { members: TutorMemberPage["items"]; busyMember?: string; canApprove: boolean; onAction: (id: string, action: "approve" | "reject") => void }) {
+function PendingTable({ members, busyMember, archived, canApprove, onAction }: { members: TutorMemberPage["items"]; busyMember?: string; archived: boolean; canApprove: boolean; onAction: (id: string, action: "approve" | "reject") => void }) {
   return <div style={{ overflowX: "auto" }}><table className="tutor-table"><thead><tr><th>Applicant</th><th>Requested</th><th>Actions</th></tr></thead><tbody>
-    {members.map((member) => <tr key={member.class_member_id}><td title={member.student_id}>Student · {member.student_id.slice(0, 8)}</td><td>{member.requested_at ? new Date(member.requested_at).toLocaleString() : "—"}</td><td><div className="tutor-member-actions"><Tooltip title={canApprove ? undefined : "No seats left in this class"}><Button type="primary" disabled={!canApprove} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "approve")}>Approve</Button></Tooltip><Button loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "reject")}>Reject</Button></div></td></tr>)}
+    {members.map((member) => {
+      const locked = archived || (Boolean(busyMember) && busyMember !== member.class_member_id);
+      const approveReason = archived ? "Archived classes do not accept membership changes" : canApprove ? undefined : "No seats left in this class";
+      return <tr key={member.class_member_id}><td title={member.student_id}>Student · {member.student_id.slice(0, 8)}</td><td>{member.requested_at ? new Date(member.requested_at).toLocaleString() : "—"}</td><td><div className="tutor-member-actions"><Tooltip title={approveReason}><Button type="primary" disabled={!canApprove || locked} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "approve")}>Approve</Button></Tooltip><Button disabled={locked} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "reject")}>Reject</Button></div></td></tr>;
+    })}
   </tbody></table></div>;
 }
