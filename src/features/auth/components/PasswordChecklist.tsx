@@ -1,8 +1,9 @@
 import { CheckCircleFilled, CloseCircleOutlined, MinusCircleOutlined } from '@ant-design/icons'
 import { passwordByteLength } from '../utils/authValidation'
+import { resetPasswordRequirements } from '../utils/passwordRecoveryValidation'
 
-export function PasswordChecklist({ password = '' }: { password?: string }) {
-  const requirements = [
+export function PasswordChecklist({ password = '', mode = 'register' }: { password?: string; mode?: 'register' | 'reset' }) {
+  const requirements = mode === 'reset' ? resetPasswordRequirements(password).map(({ label, met }) => ({ label, state: met ? 'met' : 'pending' })) : [
     { label: 'At least 8 characters', state: password.length >= 8 ? 'met' : 'pending' },
     {
       label: 'At most 72 bytes',

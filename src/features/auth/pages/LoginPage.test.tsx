@@ -2,7 +2,7 @@ import { AxiosError } from 'axios'
 import { ApiError } from '@/api/apiError'
 import { errorEnvelope } from '@/test/fixtures/auth'
 import { loginErrorMessage } from '../utils/authErrorPresentation'
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { authApi } from '@/api/authApi'
@@ -314,15 +314,14 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password')
   })
 
-  it("opens usable administrator guidance and closes it without changing route", async () => {
-    const { user, router } = renderAuthPage('/login')
-    await user.click(screen.getByRole('button', { name: 'Forgot password?' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Password assistance' })
-    expect(dialog).toHaveTextContent('Self-service password reset is not enabled')
-    expect(dialog).toHaveTextContent('G11 System Administrator')
-    await user.click(within(dialog).getByRole('button', { name: 'Got it' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(router.state.location.pathname).toBe('/login')
+  it('opens recovery even when LMS configuration is missing, preserving only a safe return path', async () => {
+    vi.stubEnv('VITE_AUTH_MODE', 'lms')
+    const { user, router } = renderAuthPage('/login', { from: '/profile', password: 'private' })
+    await user.click(screen.getByRole('link', { name: 'Forgot password?' }))
+    await screen.findByRole('heading', { name: 'Forgot your password?' })
+    expect(router.state.location.pathname).toBe('/forgot-password')
+    expect(router.state.location.state).toEqual({ from: '/profile' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it("does not redirect after the user leaves a pending login", async () => {

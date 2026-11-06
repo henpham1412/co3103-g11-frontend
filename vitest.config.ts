@@ -3,11 +3,13 @@ import react from '@vitejs/plugin-react'
 import { defaultExclude, defineConfig } from 'vitest/config'
 
 const pureTests = [
+  'src/features/profile/utils/*.test.ts', 'src/api/profileMapping.test.ts',
+  'src/api/passwordRecoveryMapping.test.ts',
   'src/features/auth/utils/*.test.ts', 'src/utils/*.test.ts',
   'src/api/apiError.test.ts', 'src/api/clients.test.ts', 'src/api/authMapping.test.ts', 'src/app/theme.test.ts',
 ]
 const storageTests = ['src/features/auth/services/*.test.ts']
-const apiTests = ['src/api/authApi.test.ts', 'src/api/authInterceptors.test.ts']
+const apiTests = ['src/api/authApi.test.ts', 'src/api/authInterceptors.test.ts', 'src/api/passwordRecoveryApi.test.ts', 'src/api/profileApi.test.ts']
 
 export default defineConfig({
   plugins: [react()],
@@ -15,8 +17,9 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
-    testTimeout: 15000,
-    maxWorkers: 4,
+    testTimeout: process.env.CI ? 45000 : 15000,
+    // Limit JSDOM contention on CPU-constrained CI runners.
+    maxWorkers: process.env.CI ? 2 : 4,
     clearMocks: true,
     restoreMocks: true,
     unstubEnvs: true,

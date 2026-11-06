@@ -15,7 +15,7 @@ export function returnDestination(from: unknown): string {
     const url = new URL(target, base)
     const decodedPath = decodeURIComponent(url.pathname)
     if (url.origin !== base || decodedPath.startsWith('//')
-      || /^\/(?:login|register)\/*$/i.test(decodedPath)) return '/'
+      || /^\/(?:login|register|forgot-password|reset-password)\/*$/i.test(new URL(decodedPath, base).pathname)) return '/'
     return url.pathname + url.search + url.hash
   } catch {
     return '/'
