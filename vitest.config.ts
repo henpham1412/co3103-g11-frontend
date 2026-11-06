@@ -13,7 +13,10 @@ const apiTests = ['src/api/authApi.test.ts', 'src/api/authInterceptors.test.ts']
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: [
+      { find: /^@testing-library\/react$/, replacement: fileURLToPath(new URL('./src/test/testingLibrary.tsx', import.meta.url)) },
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+    ],
   },
   test: {
     // Vite loads a developer's .env.local into the test process, and that file can switch on
