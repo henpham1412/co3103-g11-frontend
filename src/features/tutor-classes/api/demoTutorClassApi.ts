@@ -39,10 +39,30 @@ const outlines = new Map<string, TutorOutline>(sampleClasses.map((item) => {
   return [item.class_id, {
     class_id: source.class_id,
     chapters: source.chapters.map((chapter) => ({
-      ...chapter,
+      chapter_id: chapter.chapter_id,
+      class_id: item.class_id,
+      title: chapter.title,
+      description: chapter.description ?? null,
+      sequence_order: chapter.sequence_order,
+      status: chapter.status,
       lessons: chapter.lessons.map((lesson) => ({
-        ...lesson,
+        lesson_id: lesson.lesson_id,
+        chapter_id: chapter.chapter_id,
+        title: lesson.title,
+        description: lesson.description ?? null,
         estimated_duration: lesson.estimated_duration ?? null,
+        sequence_order: lesson.sequence_order,
+        status: lesson.status ?? "PUBLISHED",
+        materials: (lesson.materials ?? []).map((material) => ({
+          material_id: material.material_id,
+          lesson_id: lesson.lesson_id,
+          title: material.title,
+          material_type: material.material_type,
+          file_url: material.file_url,
+          content: material.content,
+          sequence_order: material.sequence_order,
+          status: material.status,
+        })),
       })),
     })),
   }];
@@ -88,9 +108,19 @@ export function updateDemoTutorClass(classId: string, payload: Partial<Pick<Tuto
   return updated;
 }
 
-export function getDemoTutorClassMembers(classId: string, query: { status?: "PENDING" | "ACTIVE"; page?: number; size?: number } = {}): TutorMemberPage {
+export function getDemoTutorClassMembers(classId: string, query: { status?: "PENDING" | "ACTIVE"; q?: string; page?: number; size?: number; sort?: string } = {}): TutorMemberPage {
   let items = members.get(classId) ?? [];
   if (query.status) items = items.filter((item) => item.status === query.status);
+  const search = query.q?.trim().toLowerCase();
+  if (search) items = items.filter((item) => item.student_id.toLowerCase().includes(search));
+  const [field, direction] = (query.sort ?? "requested_at,desc").split(",");
+  const comparator: Record<string, (a: TutorMember, b: TutorMember) => number> = {
+    requested_at: (a, b) => (a.requested_at ?? "").localeCompare(b.requested_at ?? ""),
+    joined_at: (a, b) => (a.joined_at ?? "").localeCompare(b.joined_at ?? ""),
+    status: (a, b) => a.status.localeCompare(b.status),
+  };
+  const compare = comparator[field] ?? comparator.requested_at;
+  items = [...items].sort((a, b) => (direction === "asc" ? compare(a, b) : -compare(a, b)));
   const page = Math.max(1, query.page ?? 1);
   const size = Math.max(1, query.size ?? 20);
   return { items: items.slice((page - 1) * size, page * size), page, size, total_items: items.length, total_pages: Math.ceil(items.length / size) };
@@ -197,3 +227,11 @@ function findMaterial(id: string) { const item = findOptionalMaterial(id); if (!
 function requireOutlineForChapter(id: string) { for (const outline of outlines.values()) if (outline.chapters.some((item) => item.chapter_id === id)) return outline; throw new Error("Demo chapter not found."); }
 function requireOutlineForLesson(id: string) { for (const outline of outlines.values()) for (const chapter of outline.chapters) if (chapter.lessons.some((item) => item.lesson_id === id)) return chapter; throw new Error("Demo lesson not found."); }
 function requireOutlineForMaterial(id: string) { for (const outline of outlines.values()) for (const chapter of outline.chapters) for (const lesson of chapter.lessons) if (lesson.materials.some((item) => item.material_id === id)) return lesson; throw new Error("Demo material not found."); }
+
+export function uploadDemoClassThumbnail(classId: string, fileName: string): string {
+  const current = classes.get(classId);
+  if (!current) throw new Error("Demo class not found.");
+  const thumbnailUrl = `https://demo.invalid/thumbnails/${encodeURIComponent(fileName)}`;
+  classes.set(classId, { ...current, thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString() });
+  return thumbnailUrl;
+}

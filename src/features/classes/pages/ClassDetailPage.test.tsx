@@ -40,6 +40,7 @@ const classOutline: ClassOutlineResponse = {
       chapter_id: 'chapter-1',
       title: 'Getting started',
       sequence_order: 0,
+      status: 'PUBLISHED',
       lessons: [
         {
           lesson_id: 'lesson-1',
@@ -59,11 +60,13 @@ const outlineWithActivities: ClassOutlineResponse = {
       chapter_id: 'chapter-1',
       title: 'Getting started',
       sequence_order: 0,
+      status: 'PUBLISHED',
       lessons: [
         {
           lesson_id: 'lesson-1',
           title: 'Your first program',
           sequence_order: 0,
+          status: 'PUBLISHED',
           estimated_duration: 25,
           activities: [
             { activity_id: 'activity-1', title: 'Java basics check', activity_type: 'QUIZ', sequence_order: 0 },

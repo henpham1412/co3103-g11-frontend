@@ -2,14 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Empty, Spin, Statistic, Typography } from "antd";
 import { Link } from "react-router-dom";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
+import { normalizeApiError } from "@/api/apiError";
 import { getTutorClasses } from "../api/tutorClassApi";
 import type { TutorClass } from "../types";
+import { tutorErrorText } from "../utils/tutorErrorText";
 
 export default function TutorDashboardPage() {
   const [classes, setClasses] = useState<TutorClass[]>([]);
   const [totalClasses, setTotalClasses] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -20,8 +23,13 @@ export default function TutorDashboardPage() {
         setClasses([ ...firstPage.items, ...laterPages.flatMap((page) => page.items) ]);
         setTotalClasses(firstPage.total_items);
         setError(undefined);
+        setPermissionDenied(false);
       })
-      .catch((cause: unknown) => { if (!controller.signal.aborted) setError(errorText(cause)); })
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return;
+        if (normalizeApiError(cause).status === 403) setPermissionDenied(true);
+        setError(tutorErrorText(cause));
+      })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, []);
@@ -36,8 +44,12 @@ export default function TutorDashboardPage() {
     <TutorWorkspaceLayout currentPage="Dashboard">
       <main className="tutor-page tutor-dashboard">
         <div className="tutor-page__heading"><div><Typography.Title level={2}>Tutor Dashboard</Typography.Title><Typography.Paragraph type="secondary">Review your classes and continue preparing course content.</Typography.Paragraph></div></div>
-        {error && <Alert type="error" showIcon message="Could not load your dashboard" description={error} />}
-        {loading ? <div className="tutor-page__loading"><Spin /></div> : <>
+        {permissionDenied ? (
+          <Alert type="warning" showIcon title="Tutor workspace is not available to your account" description="The LMS refused the tutor class list, so no metrics or class shortcuts are shown." />
+        ) : error ? (
+          <Alert type="error" showIcon title="Could not load your dashboard" description={error} />
+        ) : null}
+        {loading ? <div className="tutor-page__loading"><Spin /></div> : !permissionDenied && <>
           <section className="tutor-dashboard__metrics">
             <div className="tutor-panel"><Statistic title="Active Classes" value={summary.active} /><span>{summary.archived} archived · {totalClasses} total classes</span></div>
             <div className="tutor-panel"><Statistic title="Enrolled Students" value="—" /><span>The class-list API does not include enrollment totals.</span></div>
@@ -55,9 +67,4 @@ export default function TutorDashboardPage() {
       </main>
     </TutorWorkspaceLayout>
   );
-}
-
-function errorText(error: unknown) {
-  if (typeof error === "object" && error && "message" in error) return String(error.message);
-  return "The request could not be completed.";
 }
