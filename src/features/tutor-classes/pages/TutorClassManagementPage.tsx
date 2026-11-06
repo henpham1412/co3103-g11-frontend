@@ -39,7 +39,7 @@ export default function TutorClassManagementPage() {
   const [classes, setClasses] = useState<TutorClass[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [selectedDetails, setSelectedDetails] = useState<ClassCatalogItem>();
-  const [pendingCount, setPendingCount] = useState<number>();
+  const [pendingCount, setPendingCount] = useState<{ classId: string; total: number }>();
   const [page, setPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [search, setSearch] = useState("");
@@ -86,12 +86,12 @@ export default function TutorClassManagementPage() {
   useEffect(() => {
     if (!selectedId) return;
     const controller = new AbortController();
-    setPendingCount(undefined);
-    getClassDetails(selectedId, controller.signal)
+    const classId = selectedId;
+    getClassDetails(classId, controller.signal)
       .then(setSelectedDetails)
       .catch(() => { if (!controller.signal.aborted) setSelectedDetails(undefined); });
-    getTutorClassMembers(selectedId, { status: "PENDING", page: 1, size: 1 }, controller.signal)
-      .then((result) => { if (!controller.signal.aborted) setPendingCount(result.total_items); })
+    getTutorClassMembers(classId, { status: "PENDING", page: 1, size: 1 }, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setPendingCount({ classId, total: result.total_items }); })
       .catch(() => { if (!controller.signal.aborted) setPendingCount(undefined); });
     return () => controller.abort();
   }, [selectedId, reload]);
@@ -167,7 +167,7 @@ export default function TutorClassManagementPage() {
                     {visibleClasses.map((item) => <tr key={item.class_id} className={selectedId === item.class_id ? "is-selected" : ""}>
                       <td><button className="tutor-table__select" onClick={() => { setSelectedDetails(undefined); setSelectedId(item.class_id); }}><strong>{item.title}</strong><span>{item.class_code}</span></button></td>
                       <td>{item.status === "ARCHIVED" ? "—" : selectedId === item.class_id && selectedDetails ? `${selectedDetails.active_member_count}/${selectedDetails.max_capacity ?? "∞"}` : "—"}</td>
-                      <td>{selectedId === item.class_id && pendingCount !== undefined ? pendingCount : "—"}</td><td><Tag color={item.status === "ACTIVE" ? "green" : "default"}>{item.status}</Tag></td>
+                      <td>{pendingCount?.classId === item.class_id ? pendingCount.total : "—"}</td><td><Tag color={item.status === "ACTIVE" ? "green" : "default"}>{item.status}</Tag></td>
                     </tr>)}
                   </tbody></table></div>
                   <Pagination style={{ marginTop: 16, textAlign: "right" }} current={page} pageSize={PAGE_SIZE} total={filteredClasses.length} showSizeChanger={false} onChange={setPage} />
