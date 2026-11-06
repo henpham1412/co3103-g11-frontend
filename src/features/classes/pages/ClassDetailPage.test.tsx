@@ -121,14 +121,20 @@ describe('FE-3 class detail', () => {
     expect(api.getCurrentMemberships).toHaveBeenCalledWith(expect.any(AbortSignal))
   })
 
-  it('lists the quiz and assignment placed in each published lesson', async () => {
+  it('links each lesson activity to the FE-6 activity route', async () => {
     api.getClassOutline.mockResolvedValue(outlineWithActivities)
 
     renderDetails()
 
     fireEvent.click(await screen.findByRole('button', { name: /Chapter 1.*Getting started/ }))
-    expect(await screen.findByText('Java basics check')).toBeInTheDocument()
-    expect(screen.getByText('Write a loop')).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Java basics check' })).toHaveAttribute(
+      'href',
+      '/classes/class-123/lessons/lesson-1/activities/activity-1',
+    )
+    expect(screen.getByRole('link', { name: 'Write a loop' })).toHaveAttribute(
+      'href',
+      '/classes/class-123/lessons/lesson-1/activities/activity-2',
+    )
     expect(screen.getAllByText('Quiz')).toHaveLength(1)
     expect(screen.getAllByText('Assignment')).toHaveLength(1)
   })

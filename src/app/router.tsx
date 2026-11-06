@@ -5,6 +5,7 @@ import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { PublicOnlyRoute } from "@/features/auth/components/PublicOnlyRoute";
 
+import ClassActivityPlaceholderPage from "../features/classes/pages/ClassActivityPlaceholderPage";
 import ClassCatalogPage from "../features/classes/pages/ClassCatalogPage";
 import ClassDetailPage from "../features/classes/pages/ClassDetailPage";
 import App from "./App";
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
           },
           { path: "/classes", element: <ClassCatalogPage /> },
           { path: "/classes/:classId", element: <ClassDetailPage /> },
+          {
+            path: "/classes/:classId/lessons/:lessonId/activities/:activityId",
+            element: <ClassActivityPlaceholderPage />,
+          },
           { path: "/dashboard", element: <WorkspaceSectionPage /> },
           { path: "/discussion", element: <WorkspaceSectionPage /> },
         ],

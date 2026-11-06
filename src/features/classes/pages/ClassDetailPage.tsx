@@ -237,7 +237,9 @@ export default function ClassDetailPage() {
                       <Tag color={activity.activity_type === "QUIZ" ? "blue" : "orange"}>
                         {activity.activity_type === "QUIZ" ? "Quiz" : "Assignment"}
                       </Tag>
-                      <span>{activity.title}</span>
+                      <Link to={`/classes/${classId}/lessons/${lesson.lesson_id}/activities/${activity.activity_id}`}>
+                        {activity.title}
+                      </Link>
                     </span>
                   ))}
                 </div>,
