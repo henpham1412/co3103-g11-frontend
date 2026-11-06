@@ -15,6 +15,7 @@
 .class-detail__tutor { display: flex; align-items: center; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #e5eaf2; }
 .class-detail__tutor .ant-avatar { background: #eff6ff; color: #2563eb; }
 .class-detail__tabs { margin-top: 12px; }
+.class-detail__membership-status { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
 .class-detail__syllabus-layout { display: grid; grid-template-columns: minmax(0, 1fr) 292px; align-items: start; gap: 24px; }
 .class-detail__section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 8px 0 16px; }
 .class-detail__section-heading h4 { margin: 0; }

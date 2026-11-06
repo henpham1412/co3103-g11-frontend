@@ -31,7 +31,7 @@ import type { ClassCatalogItem, ClassOutlineResponse, MembershipStatus } from ".
 import "../class-detail.css";
 
 interface ClassDetailResult {
-  classId: string;
+  requestKey: string;
   data?: ClassCatalogItem;
   error?: string;
 }
@@ -43,47 +43,63 @@ interface ClassOutlineResult {
   membershipRequired?: boolean;
 }
 
+interface ClassMembershipResult {
+  requestKey: string;
+  status?: MembershipStatus;
+  error?: string;
+}
+
 export default function ClassDetailPage() {
   const { classId = "" } = useParams();
+  // Details, outline and membership are one server-owned snapshot: a membership write moves
+  // the seat count and can unlock the outline, so a finished write re-reads all three.
+  const [readToken, setReadToken] = useState(0);
   const [detailResult, setDetailResult] = useState<ClassDetailResult | null>(null);
   const [outlineResult, setOutlineResult] = useState<ClassOutlineResult | null>(null);
-  const [outlineVersion, setOutlineVersion] = useState(0);
-  const [membershipResult, setMembershipResult] = useState<{
-    classId: string;
-    status?: MembershipStatus;
-    error?: string;
-  } | null>(null);
+  const [membershipResult, setMembershipResult] = useState<ClassMembershipResult | null>(null);
   const [joining, setJoining] = useState(false);
 
-  const detailLoading = detailResult?.classId !== classId;
+  const detailRequestKey = ["detail", classId, readToken].join("|");
+  const outlineRequestKey = ["outline", classId, readToken].join("|");
+  const membershipRequestKey = ["membership", classId, readToken].join("|");
+
+  const detailLoading = detailResult?.requestKey !== detailRequestKey;
   const classItem = detailLoading ? undefined : detailResult?.data;
   const detailError = detailLoading ? undefined : detailResult?.error;
-  const outlineRequestKey = `${classId}:${outlineVersion}`;
-  const outlineLoading = Boolean(classItem) && outlineResult?.requestKey !== outlineRequestKey;
+  const hasClass = classItem !== undefined;
+  const outlineLoading = !hasClass || outlineResult?.requestKey !== outlineRequestKey;
   const outline = outlineLoading ? undefined : outlineResult?.data;
   const outlineError = outlineLoading ? undefined : outlineResult?.error;
   const membershipRequired = !outlineLoading && outlineResult?.membershipRequired === true;
-  const membershipStatusAvailable = membershipResult?.classId === classId && !membershipResult.error;
+  const membershipLoading = membershipResult?.requestKey !== membershipRequestKey;
+  const membershipStatusAvailable = !membershipLoading && membershipResult?.error === undefined;
   const membershipStatus = membershipStatusAvailable ? membershipResult?.status ?? null : null;
-  const membershipStatusError = membershipResult?.classId === classId ? membershipResult.error : undefined;
+  const membershipStatusError = membershipLoading ? undefined : membershipResult?.error;
+  const isOpenClass = classItem?.enrollment_policy === "OPEN";
+  const isFullOpenClass = Boolean(
+    classItem
+    && isOpenClass
+    && classItem.max_capacity !== null
+    && classItem.active_member_count >= classItem.max_capacity,
+  );
 
   useEffect(() => {
     if (!classId) return;
     const controller = new AbortController();
 
     getClassDetails(classId, controller.signal)
-      .then((data) => setDetailResult({ classId, data }))
+      .then((data) => setDetailResult({ requestKey: detailRequestKey, data }))
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setDetailResult({ classId, error: getErrorMessage(error) });
+          setDetailResult({ requestKey: detailRequestKey, error: getErrorMessage(error) });
         }
       });
 
     return () => controller.abort();
-  }, [classId]);
+  }, [classId, detailRequestKey]);
 
   useEffect(() => {
-    if (!classItem) return;
+    if (!hasClass) return;
     const controller = new AbortController();
 
     getClassOutline(classId, controller.signal)
@@ -101,7 +117,7 @@ export default function ClassDetailPage() {
       });
 
     return () => controller.abort();
-  }, [classId, classItem, outlineRequestKey]);
+  }, [classId, hasClass, outlineRequestKey]);
 
   useEffect(() => {
     if (!classId) return;
@@ -111,7 +127,7 @@ export default function ClassDetailPage() {
       .then((memberships) => {
         const membership = memberships.find((item) => item.class_id === classId);
         setMembershipResult({
-          classId,
+          requestKey: membershipRequestKey,
           status: membership?.status === "ACTIVE" || membership?.status === "PENDING"
             ? membership.status
             : undefined,
@@ -119,45 +135,54 @@ export default function ClassDetailPage() {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setMembershipResult({ classId, error: getErrorMessage(error) });
+          setMembershipResult({ requestKey: membershipRequestKey, error: getErrorMessage(error) });
         }
       });
 
     return () => controller.abort();
-  }, [classId]);
+  }, [classId, membershipRequestKey]);
 
   async function handleJoin() {
-    if (!classItem) return;
+    if (!classItem || joining) return;
     setJoining(true);
     try {
       const result = await joinClass(classItem.class_id, classItem.enrollment_policy);
-      setMembershipResult({ classId: classItem.class_id, status: result.status });
-      if (result.status === "ACTIVE") {
-        message.success("You joined the class.");
-        setOutlineVersion((version) => version + 1);
-      } else {
-        message.success("Your request to join was submitted.");
-      }
+      message.success(
+        result.status === "ACTIVE"
+          ? "You joined the class."
+          : "Your request to join was submitted.",
+      );
+      setReadToken((token) => token + 1);
     } catch (error) {
-      message.error(getErrorMessage(error));
+      const code = getErrorCode(error);
+      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE") {
+        // Either code means the server disagrees with this snapshot, so it is re-read.
+        if (code === "CLASS_FULL") {
+          message.error("This class is full.");
+        } else {
+          message.warning("Your membership already exists. Refreshing its current status.");
+        }
+        setReadToken((token) => token + 1);
+      } else {
+        message.error(getErrorMessage(error));
+      }
     } finally {
       setJoining(false);
     }
   }
 
   async function handleMembershipEnd() {
-    if (!classItem || !membershipStatus) return;
+    if (!classItem || joining || !membershipStatus) return;
     setJoining(true);
     try {
       if (membershipStatus === "ACTIVE") {
         await leaveClass(classItem.class_id);
         message.success("You left the class.");
-        setOutlineVersion((version) => version + 1);
       } else {
         await withdrawJoinRequest(classItem.class_id);
         message.success("Your join request was withdrawn.");
       }
-      setMembershipResult({ classId: classItem.class_id });
+      setReadToken((token) => token + 1);
     } catch (error) {
       message.error(getErrorMessage(error));
     } finally {
@@ -181,29 +206,6 @@ export default function ClassDetailPage() {
         : membershipStatus === "PENDING"
           ? "Your request is waiting for tutor approval."
           : "Join this class to view its published learning outline."}
-      action={
-        !membershipStatusAvailable ? undefined : membershipStatus === "PENDING" ? (
-          <Popconfirm
-            title="Withdraw your join request?"
-            okText="Withdraw request"
-            cancelText="Keep"
-            onConfirm={handleMembershipEnd}
-          >
-            <Button loading={joining}>Withdraw request</Button>
-          </Popconfirm>
-        ) : (
-          <Button
-            type="primary"
-            loading={joining}
-            disabled={classItem?.enrollment_policy === "OPEN"
-              && classItem.max_capacity !== null
-              && classItem.active_member_count >= classItem.max_capacity}
-            onClick={handleJoin}
-          >
-            {classItem?.enrollment_policy === "OPEN" ? "Join Class" : "Request to Join"}
-          </Button>
-        )
-      }
     />
   ) : outlineError ? (
     <Alert type="warning" showIcon message="The syllabus could not be loaded" description={outlineError} />
@@ -296,25 +298,48 @@ export default function ClassDetailPage() {
               />
             )}
 
-            {membershipStatus === "ACTIVE" && (
-              <div className="class-detail__membership-status">
-                <Tag color="green">Enrolled</Tag>
-                <Popconfirm
-                  title="Leave this class?"
-                  description="You will lose access to this class's learning content."
-                  okText="Leave class"
-                  cancelText="Keep"
-                  onConfirm={handleMembershipEnd}
+            <div className="class-detail__membership-status">
+              {membershipStatus === "ACTIVE" && (
+                <>
+                  <Tag color="green">Enrolled</Tag>
+                  <Popconfirm
+                    title="Leave this class?"
+                    description="You will lose access to this class's learning content."
+                    okText="Leave"
+                    cancelText="Keep"
+                    disabled={joining}
+                    onConfirm={handleMembershipEnd}
+                  >
+                    <Button size="small" loading={joining}>Leave class</Button>
+                  </Popconfirm>
+                </>
+              )}
+              {membershipStatus === "PENDING" && (
+                <>
+                  <Tag color="orange">Request pending</Tag>
+                  <Popconfirm
+                    title="Withdraw your join request?"
+                    description="You can submit a new request later."
+                    okText="Withdraw"
+                    cancelText="Keep"
+                    disabled={joining}
+                    onConfirm={handleMembershipEnd}
+                  >
+                    <Button size="small" loading={joining}>Withdraw request</Button>
+                  </Popconfirm>
+                </>
+              )}
+              {membershipStatus !== "ACTIVE" && membershipStatus !== "PENDING" && (
+                <Button
+                  type="primary"
+                  disabled={!membershipStatusAvailable || isFullOpenClass}
+                  loading={joining}
+                  onClick={handleJoin}
                 >
-                  <Button size="small" loading={joining}>Leave class</Button>
-                </Popconfirm>
-              </div>
-            )}
-            {membershipStatus === "PENDING" && (
-              <div className="class-detail__membership-status">
-                <Tag color="orange">Request pending</Tag>
-              </div>
-            )}
+                  {isOpenClass ? "Join Class" : "Request to Join"}
+                </Button>
+              )}
+            </div>
 
             <Tabs
               className="class-detail__tabs"

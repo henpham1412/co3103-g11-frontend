@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ClassCatalogItem, ClassCatalogResponse } from '../types'
+import type { ClassCatalogItem, ClassCatalogResponse, MembershipStatus } from '../types'
 
 const api = vi.hoisted(() => ({
   getClassCatalog: vi.fn(),
@@ -52,6 +52,17 @@ function renderCatalog() {
       </Routes>
     </MemoryRouter>,
   )
+}
+
+async function cardOf(title: string): Promise<HTMLElement> {
+  const card = (await screen.findByRole('link', { name: title })).closest('.ant-card')
+  if (!card) throw new Error(`${title} is not rendered inside a card`)
+  return card as HTMLElement
+}
+
+async function confirmCardAction(card: HTMLElement, triggerName: string, okName: string) {
+  fireEvent.click(within(card).getByRole('button', { name: triggerName }))
+  fireEvent.click(await screen.findByRole('button', { name: okName }))
 }
 
 describe('FE-3 class catalog', () => {
@@ -166,6 +177,9 @@ describe('FE-3 class catalog', () => {
       makeClass(2, { enrollment_policy: 'APPROVAL_REQUIRED', active_member_count: 20, max_capacity: 20 }),
     ]))
     api.joinClass.mockResolvedValue({ status: 'PENDING' })
+    api.getCurrentMemberships
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ class_id: 'class-2', status: 'PENDING' }])
 
     renderCatalog()
 
@@ -180,7 +194,7 @@ describe('FE-3 class catalog', () => {
     fireEvent.click(requestButton)
 
     await waitFor(() => expect(api.joinClass).toHaveBeenCalledWith('class-2', 'APPROVAL_REQUIRED'))
-    expect(await within(approvalCard).findByText('Pending')).toBeInTheDocument()
+    expect(await screen.findByText('Pending')).toBeInTheDocument()
   })
 
   it('shows a useful empty state when the API returns no classes', async () => {
@@ -189,6 +203,169 @@ describe('FE-3 class catalog', () => {
     renderCatalog()
 
     expect(await screen.findByText('No classes match your search')).toBeInTheDocument()
+    expect(document.querySelector('.ant-pagination')).toBeNull()
+  })
+
+  it('re-reads the catalog page so capacity after joining is the server value, not a local guess', async () => {
+    const items = [makeClass(1, { active_member_count: 19 })]
+    const memberships: { class_id: string; status: MembershipStatus }[] = []
+    api.getClassCatalog.mockImplementation(() =>
+      Promise.resolve(catalogResponse(items.map((item) => ({ ...item })))),
+    )
+    api.getCurrentMemberships.mockImplementation(() => Promise.resolve([...memberships]))
+    api.joinClass.mockImplementation(() => {
+      items[0].active_member_count = 20
+      memberships.push({ class_id: 'class-1', status: 'ACTIVE' })
+      return Promise.resolve({ status: 'ACTIVE' })
+    })
+
+    renderCatalog()
+
+    const classCard = await cardOf('Course 1')
+    expect(within(classCard).getByText('19/20 Seats')).toBeInTheDocument()
+
+    fireEvent.click(within(classCard).getByRole('button', { name: 'Join Class' }))
+
+    expect(await screen.findByText('20/20 Seats')).toBeInTheDocument()
+    expect(screen.getByText('Enrolled')).toBeInTheDocument()
+    expect(api.getClassCatalog).toHaveBeenCalledTimes(2)
+    expect(api.getCurrentMemberships).toHaveBeenCalledTimes(2)
+  })
+
+  it('re-reads the catalog page after leaving a class', async () => {
+    const items = [makeClass(1, { active_member_count: 20 })]
+    const memberships: { class_id: string; status: MembershipStatus }[] = [
+      { class_id: 'class-1', status: 'ACTIVE' },
+    ]
+    api.getClassCatalog.mockImplementation(() =>
+      Promise.resolve(catalogResponse(items.map((item) => ({ ...item })))),
+    )
+    api.getCurrentMemberships.mockImplementation(() => Promise.resolve([...memberships]))
+    api.leaveClass.mockImplementation(() => {
+      items[0].active_member_count = 19
+      memberships.length = 0
+      return Promise.resolve(undefined)
+    })
+
+    renderCatalog()
+
+    const classCard = await cardOf('Course 1')
+    expect(within(classCard).getByText('20/20 Seats')).toBeInTheDocument()
+
+    await confirmCardAction(classCard, 'Leave class', 'Leave')
+
+    expect(await screen.findByText('19/20 Seats')).toBeInTheDocument()
+    expect(screen.queryByText('Enrolled')).not.toBeInTheDocument()
+    expect(api.getClassCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  it('blocks overlapping submissions on one class without blocking another class', async () => {
+    const resolvers: ((membership: { status: MembershipStatus }) => void)[] = []
+    api.getClassCatalog.mockResolvedValue(catalogResponse([makeClass(1), makeClass(2)]))
+    api.joinClass.mockImplementation(
+      () => new Promise<{ status: MembershipStatus }>((resolve) => { resolvers.push(resolve) }),
+    )
+
+    renderCatalog()
+
+    const firstCard = await cardOf('Course 1')
+    const secondCard = await cardOf('Course 2')
+
+    fireEvent.click(within(firstCard).getByRole('button', { name: 'Join Class' }))
+    await waitFor(() => expect(resolvers).toHaveLength(1))
+
+    // The card is busy, so a second submission cannot reach the API.
+    fireEvent.click(within(firstCard).getByRole('button', { name: /Join Class/ }))
+    expect(api.joinClass).toHaveBeenCalledTimes(1)
+
+    // The guard is per class, so an unrelated card stays actionable.
+    fireEvent.click(within(secondCard).getByRole('button', { name: 'Join Class' }))
+    await waitFor(() => expect(api.joinClass).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      resolvers.forEach((resolve) => resolve({ status: 'ACTIVE' }))
+    })
+    // Both operations finished, so the guard is released and the same card is actionable again.
+    await waitFor(() => {
+      const refreshedCard = screen.getByRole('link', { name: 'Course 1' }).closest('.ant-card') as HTMLElement
+      expect(within(refreshedCard).getByRole('button', { name: /Join Class/ })).toBeEnabled()
+    })
+  })
+
+  it('blocks a second withdrawal on the same card while the first request is running', async () => {
+    let release: (() => void) | undefined
+    api.getClassCatalog.mockResolvedValue(catalogResponse([makeClass(1)]))
+    api.getCurrentMemberships.mockResolvedValue([{ class_id: 'class-1', status: 'PENDING' }])
+    api.withdrawJoinRequest.mockImplementation(
+      () => new Promise<void>((resolve) => { release = resolve }),
+    )
+
+    renderCatalog()
+
+    const classCard = await cardOf('Course 1')
+    await confirmCardAction(classCard, 'Withdraw request', 'Withdraw')
+    await waitFor(() => expect(api.withdrawJoinRequest).toHaveBeenCalledTimes(1))
+
+    expect(within(classCard).getByRole('button', { name: /Withdraw request/ })).toBeDisabled()
+    fireEvent.click(within(classCard).getByRole('button', { name: /Withdraw request/ }))
+    expect(api.withdrawJoinRequest).toHaveBeenCalledTimes(1)
+
+    release?.()
+    await waitFor(() => expect(api.getClassCatalog).toHaveBeenCalledTimes(2))
+  })
+
+  it('recovers when the server reports fewer pages than the one being displayed', async () => {
+    const firstPage = Array.from({ length: 12 }, (_, index) => makeClass(index + 1))
+    api.getClassCatalog.mockImplementation(({ page = 1 }: { page?: number }) => Promise.resolve(
+      page === 1
+        ? catalogResponse(firstPage, 1, 36)
+        : page === 3
+          ? { items: [], page: 3, size: 12, total_items: 13, total_pages: 2 }
+          : catalogResponse([makeClass(13)], 2, 13),
+    ))
+
+    renderCatalog()
+
+    await screen.findByRole('link', { name: 'Course 1' })
+    fireEvent.click(screen.getByTitle('3'))
+
+    await waitFor(() => {
+      expect(api.getClassCatalog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+        expect.any(AbortSignal),
+      )
+    })
+    expect(await screen.findByRole('link', { name: 'Course 13' })).toBeInTheDocument()
+  })
+
+  it('renders the class thumbnail when the catalog provides one', async () => {
+    api.getClassCatalog.mockResolvedValue(catalogResponse([
+      makeClass(1, { thumbnail_url: 'https://cdn.test/cs101.png' }),
+    ]))
+
+    renderCatalog()
+
+    const classCard = await cardOf('Course 1')
+    expect(within(classCard).getByRole('img', { name: 'Course 1 cover' }))
+      .toHaveAttribute('src', 'https://cdn.test/cs101.png')
+  })
+
+  it('keeps the artwork cover when a thumbnail is missing or fails to load', async () => {
+    api.getClassCatalog.mockResolvedValue(catalogResponse([
+      makeClass(1, { thumbnail_url: 'https://cdn.test/broken.png' }),
+      makeClass(2, { thumbnail_url: ' ' }),
+    ]))
+
+    renderCatalog()
+
+    const brokenCard = await cardOf('Course 1')
+    const missingCard = await cardOf('Course 2')
+    expect(missingCard.querySelector('img')).toBeNull()
+
+    fireEvent.error(within(brokenCard).getByRole('img', { name: 'Course 1 cover' }))
+
+    await waitFor(() => expect(brokenCard.querySelector('img')).toBeNull())
+    expect(brokenCard.querySelector('.class-catalog__cover-lines')).not.toBeNull()
   })
 
 })

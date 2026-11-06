@@ -40,6 +40,10 @@ import "../class-catalog.css";
 const PAGE_SIZE = 12;
 const DEFAULT_SORT = "created_at,desc";
 
+type MembershipOperation = "join" | "leave" | "withdraw";
+
+const operations: readonly MembershipOperation[] = ["join", "leave", "withdraw"];
+
 const sortOptions = [
   { value: "created_at,desc", label: "Newest first" },
   { value: "created_at,asc", label: "Oldest first" },
@@ -53,22 +57,61 @@ export default function ClassCatalogPage() {
   const [policy, setPolicy] = useState<EnrollmentPolicy | "ALL">("ALL");
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [page, setPage] = useState(1);
-  const requestKey = `${searchQuery}\u0000${policy}\u0000${page}\u0000${sort}`;
+  // Membership writes move the server-owned seat counts and can shrink the last page, so a
+  // finished operation bumps this token and every read is re-issued under a new identity.
+  const [readToken, setReadToken] = useState(0);
+  const requestKey = [searchQuery, policy, page, sort, readToken].join("|");
+  const membershipRequestKey = ["memberships", readToken].join("|");
   const [catalogResult, setCatalogResult] = useState<{
     key: string;
     data?: ClassCatalogResponse;
     error?: string;
   } | null>(null);
-  const [membershipByClass, setMembershipByClass] = useState<
-    Record<string, MembershipStatus>
-  >({});
-  const [membershipStatusAvailable, setMembershipStatusAvailable] = useState(false);
-  const [membershipStatusError, setMembershipStatusError] = useState<string | null>(null);
-  const [joiningClassId, setJoiningClassId] = useState<string | null>(null);
+  const [membershipResult, setMembershipResult] = useState<{
+    key: string;
+    statuses?: Record<string, MembershipStatus>;
+    error?: string;
+  } | null>(null);
+  // Keyed by class and operation, so finishing one request can neither re-enable another
+  // card nor clear the pending indicator of an operation that is still running.
+  const [pendingOperations, setPendingOperations] = useState<Record<string, true>>({});
+
+  const membershipStatuses = membershipResult?.key === membershipRequestKey
+    ? membershipResult.statuses
+    : undefined;
+  const membershipStatusAvailable = membershipStatuses !== undefined;
+  const membershipStatusError = membershipResult?.key === membershipRequestKey
+    ? membershipResult.error
+    : undefined;
 
   const loading = catalogResult?.key !== requestKey;
   const catalog = loading ? null : catalogResult?.data ?? null;
   const error = loading ? null : catalogResult?.error ?? null;
+  const totalItems = catalog?.total_items ?? 0;
+
+  function operationKey(classId: string, operation: MembershipOperation) {
+    return `${classId}:${operation}`;
+  }
+
+  function beginOperation(classId: string, operation: MembershipOperation) {
+    setPendingOperations((current) => ({ ...current, [operationKey(classId, operation)]: true }));
+  }
+
+  function endOperation(classId: string, operation: MembershipOperation) {
+    setPendingOperations((current) => {
+      const remaining = { ...current };
+      delete remaining[operationKey(classId, operation)];
+      return remaining;
+    });
+  }
+
+  function isOperationPending(classId: string, operation: MembershipOperation) {
+    return pendingOperations[operationKey(classId, operation)] === true;
+  }
+
+  function hasPendingOperation(classId: string) {
+    return operations.some((operation) => isOperationPending(classId, operation));
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -83,13 +126,20 @@ export default function ClassCatalogPage() {
       },
       controller.signal,
     )
-      .then((data) => setCatalogResult({ key: requestKey, data }))
+      .then((data) => {
+        setCatalogResult({ key: requestKey, data });
+        // A page can fall out of range while it is displayed, for example when classes are
+        // archived and the filtered total shrinks. Those classes still exist on an earlier page,
+        // so the page is corrected rather than presented as a zero-result search.
+        if (controller.signal.aborted) return;
+        const lastPage = Math.max(data.total_pages, 1);
+        if (page > lastPage && data.items.length === 0 && data.total_items > 0) {
+          setPage(lastPage);
+        }
+      })
       .catch((requestError: unknown) => {
         if (!controller.signal.aborted) {
-          setCatalogResult({
-            key: requestKey,
-            error: getErrorMessage(requestError),
-          });
+          setCatalogResult({ key: requestKey, error: getErrorMessage(requestError) });
         }
       });
 
@@ -101,19 +151,21 @@ export default function ClassCatalogPage() {
 
     getCurrentMemberships(controller.signal)
       .then((memberships) => {
-        setMembershipByClass(Object.fromEntries(
-          memberships.map(({ class_id, status }) => [class_id, status]),
-        ));
-        setMembershipStatusAvailable(true);
+        setMembershipResult({
+          key: membershipRequestKey,
+          statuses: Object.fromEntries(
+            memberships.map(({ class_id, status }) => [class_id, status]),
+          ),
+        });
       })
       .catch((requestError: unknown) => {
         if (!controller.signal.aborted) {
-          setMembershipStatusError(getErrorMessage(requestError));
+          setMembershipResult({ key: membershipRequestKey, error: getErrorMessage(requestError) });
         }
       });
 
     return () => controller.abort();
-  }, []);
+  }, [membershipRequestKey]);
 
   function submitSearch() {
     setPage(1);
@@ -121,36 +173,45 @@ export default function ClassCatalogPage() {
   }
 
   async function handleJoin(classItem: ClassCatalogItem) {
-    setJoiningClassId(classItem.class_id);
+    const { class_id: classId } = classItem;
+    if (hasPendingOperation(classId)) return;
+    beginOperation(classId, "join");
     try {
-      const membership = await joinClass(classItem.class_id, classItem.enrollment_policy);
-      setMembershipByClass((current) => ({
-        ...current,
-        [classItem.class_id]: membership.status,
-      }));
+      const membership = await joinClass(classId, classItem.enrollment_policy);
       message.success(
         membership.status === "PENDING"
           ? "Your request to join was submitted."
           : "You joined the class.",
       );
+      setReadToken((token) => token + 1);
     } catch (requestError) {
       const code = isAxiosError<{ code?: string }>(requestError)
         ? requestError.response?.data?.code
         : undefined;
-      if (code === "CLASS_FULL") {
-        message.error("This class is full.");
-      } else if (code === "INVALID_MEMBERSHIP_STATE") {
-        message.warning("Your membership already exists. Refresh the page to see its current status.");
+      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE") {
+        // Either code means the server state differs from this page, so it is re-read.
+        if (code === "CLASS_FULL") {
+          message.error("This class is full.");
+        } else {
+          message.warning("Your membership already exists. Refreshing its current status.");
+        }
+        setReadToken((token) => token + 1);
       } else {
         message.error(getErrorMessage(requestError));
       }
     } finally {
-      setJoiningClassId(null);
+      endOperation(classId, "join");
     }
   }
 
-  async function handleMembershipEnd(classId: string, status: "ACTIVE" | "PENDING") {
-    setJoiningClassId(classId);
+  async function handleMembershipEnd(
+    classItem: ClassCatalogItem,
+    status: "ACTIVE" | "PENDING",
+  ) {
+    const { class_id: classId } = classItem;
+    const operation: MembershipOperation = status === "ACTIVE" ? "leave" : "withdraw";
+    if (hasPendingOperation(classId)) return;
+    beginOperation(classId, operation);
     try {
       if (status === "ACTIVE") {
         await leaveClass(classId);
@@ -159,15 +220,11 @@ export default function ClassCatalogPage() {
         await withdrawJoinRequest(classId);
         message.success("Your join request was withdrawn.");
       }
-      setMembershipByClass((current) => {
-        const updated = { ...current };
-        delete updated[classId];
-        return updated;
-      });
+      setReadToken((token) => token + 1);
     } catch (requestError) {
       message.error(getErrorMessage(requestError));
     } finally {
-      setJoiningClassId(null);
+      endOperation(classId, operation);
     }
   }
 
@@ -244,7 +301,7 @@ export default function ClassCatalogPage() {
 
         <div className="class-catalog__catalog-meta">
           <Typography.Text>
-            {catalog?.total_items ?? 0} classes available
+            {totalItems} classes available
           </Typography.Text>
           <Typography.Text type="secondary">
             Prerequisites are guidance, not enrollment restrictions.
@@ -276,41 +333,56 @@ export default function ClassCatalogPage() {
             <Spin />
             <span>Loading classes…</span>
           </div>
-        ) : classes.length === 0 ? (
-          <Empty description={error ? "Catalog is unavailable" : "No classes match your search"} />
         ) : (
           <>
-            <Row gutter={[20, 20]} className="class-catalog__cards">
-              {classes.map((classItem) => (
-                <Col
-                  key={classItem.class_id}
-                  xs={24}
-                  md={12}
-                  lg={8}
-                  className="class-catalog__card-column"
-                >
-                  <ClassCard
-                    classItem={classItem}
-                    membershipStatus={membershipByClass[classItem.class_id]}
-                    membershipStatusAvailable={membershipStatusAvailable}
-                    membershipStatusFailed={membershipStatusError !== null}
-                    joining={joiningClassId === classItem.class_id}
-                    onJoin={() => handleJoin(classItem)}
-                    onMembershipEnd={(status) =>
-                      handleMembershipEnd(classItem.class_id, status)
-                    }
-                  />
-                </Col>
-              ))}
-            </Row>
-            <Pagination
-              className="class-catalog__pagination"
-              current={catalog?.page ?? page}
-              pageSize={catalog?.size ?? PAGE_SIZE}
-              total={catalog?.total_items ?? 0}
-              showSizeChanger={false}
-              onChange={setPage}
-            />
+            {classes.length === 0 ? (
+              <Empty
+                description={
+                  error
+                    ? "Catalog is unavailable"
+                    : totalItems > 0
+                      ? "This page has no classes. Use the pagination below to return to a page that does."
+                      : "No classes match your search"
+                }
+              />
+            ) : (
+              <Row gutter={[20, 20]} className="class-catalog__cards">
+                {classes.map((classItem) => (
+                  <Col
+                    key={classItem.class_id}
+                    xs={24}
+                    md={12}
+                    lg={8}
+                    className="class-catalog__card-column"
+                  >
+                    <ClassCard
+                      classItem={classItem}
+                      membershipStatus={membershipStatuses?.[classItem.class_id]}
+                      membershipStatusAvailable={membershipStatusAvailable}
+                      membershipStatusFailed={membershipStatusError !== undefined}
+                      joinPending={isOperationPending(classItem.class_id, "join")}
+                      endPending={
+                        isOperationPending(classItem.class_id, "leave")
+                        || isOperationPending(classItem.class_id, "withdraw")
+                      }
+                      busy={hasPendingOperation(classItem.class_id)}
+                      onJoin={() => handleJoin(classItem)}
+                      onMembershipEnd={(status) => handleMembershipEnd(classItem, status)}
+                    />
+                  </Col>
+                ))}
+              </Row>
+            )}
+            {totalItems > 0 && (
+              <Pagination
+                className="class-catalog__pagination"
+                current={catalog?.page ?? page}
+                pageSize={catalog?.size ?? PAGE_SIZE}
+                total={totalItems}
+                showSizeChanger={false}
+                onChange={setPage}
+              />
+            )}
           </>
         )}
       </main>
@@ -323,7 +395,9 @@ function ClassCard({
   membershipStatus,
   membershipStatusAvailable,
   membershipStatusFailed,
-  joining,
+  joinPending,
+  endPending,
+  busy,
   onJoin,
   onMembershipEnd,
 }: {
@@ -331,7 +405,9 @@ function ClassCard({
   membershipStatus?: MembershipStatus;
   membershipStatusAvailable: boolean;
   membershipStatusFailed: boolean;
-  joining: boolean;
+  joinPending: boolean;
+  endPending: boolean;
+  busy: boolean;
   onJoin: () => void;
   onMembershipEnd: (status: "ACTIVE" | "PENDING") => void;
 }) {
@@ -355,18 +431,30 @@ function ClassCard({
     : membershipStatusFailed
       ? "Membership unavailable"
       : "Checking membership…";
+  const coverUrl = classItem.thumbnail_url?.trim() || null;
+  const [failedCoverUrl, setFailedCoverUrl] = useState<string | null>(null);
+  const showCover = coverUrl !== null && failedCoverUrl !== coverUrl;
 
   return (
     <Card className="class-catalog__card">
-      <div className="class-catalog__card-cover class-catalog__card-cover--blue">
+      <div className={`class-catalog__card-cover class-catalog__card-cover--blue${showCover ? " class-catalog__card-cover--thumbnail" : ""}`}>
+        {showCover ? (
+          <img
+            className="class-catalog__card-cover-image"
+            src={coverUrl}
+            alt={`${classItem.title} cover`}
+            onError={() => setFailedCoverUrl(coverUrl)}
+          />
+        ) : (
+          <span className="class-catalog__cover-lines" aria-hidden="true">
+            <i />
+            <i />
+          </span>
+        )}
         <span className="class-catalog__subject-icon" aria-hidden="true">
           <BookOutlined />
         </span>
         <span className="class-catalog__subject-name">CLASS</span>
-        <span className="class-catalog__cover-lines" aria-hidden="true">
-          <i />
-          <i />
-        </span>
       </div>
 
       <div className="class-catalog__card-body">
@@ -409,11 +497,12 @@ function ClassCard({
                 ? "You will lose access to this class's learning content."
                 : "You can submit a new request later."
             }
-            okText={isEnrolled ? "Leave class" : "Withdraw request"}
+            okText={isEnrolled ? "Leave" : "Withdraw"}
             cancelText="Keep"
+            disabled={busy}
             onConfirm={() => onMembershipEnd(isEnrolled ? "ACTIVE" : "PENDING")}
           >
-            <Button block loading={joining}>
+            <Button block loading={endPending} disabled={busy}>
               {isEnrolled ? "Leave class" : "Withdraw request"}
             </Button>
           </Popconfirm>
@@ -421,8 +510,8 @@ function ClassCard({
           <Button
             block
             type="primary"
-            disabled={!membershipStatusAvailable || (isFull && !canRequest)}
-            loading={joining}
+            disabled={!membershipStatusAvailable || (isFull && !canRequest) || busy}
+            loading={joinPending}
             onClick={onJoin}
           >
             {displayedActionLabel}
