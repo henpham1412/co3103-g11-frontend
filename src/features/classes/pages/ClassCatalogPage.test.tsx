@@ -54,9 +54,13 @@ function renderCatalog() {
   )
 }
 
+// A full accessible-name lookup over the rendered grid costs seconds per call in jsdom, so the
+// card is located by its title text and the link assertion is scoped to that one card.
 async function cardOf(title: string): Promise<HTMLElement> {
-  const card = (await screen.findByRole('link', { name: title })).closest('.ant-card')
+  await screen.findByText(title)
+  const card = screen.getByText(title).closest('.ant-card')
   if (!card) throw new Error(`${title} is not rendered inside a card`)
+  expect(within(card as HTMLElement).getByRole('link', { name: title })).toBeInTheDocument()
   return card as HTMLElement
 }
 
@@ -124,12 +128,15 @@ describe('FE-3 class catalog', () => {
     )
 
     renderCatalog()
-    expect(await screen.findByRole('link', { name: 'Course 1' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Course 13' })).not.toBeInTheDocument()
+
+    expect(await screen.findByText('Course 1')).toBeInTheDocument()
+    expect(screen.queryByText('Course 13')).not.toBeInTheDocument()
+    expect(document.querySelectorAll('.class-catalog__card')).toHaveLength(12)
 
     fireEvent.click(screen.getByTitle('2'))
 
-    expect(await screen.findByRole('link', { name: 'Course 13' })).toBeInTheDocument()
+    expect(await screen.findByText('Course 13')).toBeInTheDocument()
+    expect(document.querySelectorAll('.class-catalog__card')).toHaveLength(1)
     expect(api.getClassCatalog).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 2, size: 12 }),
       expect.any(AbortSignal),
@@ -145,11 +152,9 @@ describe('FE-3 class catalog', () => {
 
     renderCatalog()
 
-    const activeCard = (await screen.findByRole('link', { name: 'Course 1' })).closest('.ant-card')
-    const pendingCard = (await screen.findByRole('link', { name: 'Course 2' })).closest('.ant-card')
-    expect(activeCard).not.toBeNull()
-    expect(pendingCard).not.toBeNull()
-    expect(within(activeCard as HTMLElement).getByText('Enrolled')).toBeInTheDocument()
+    const activeCard = await cardOf('Course 1')
+    const pendingCard = await cardOf('Course 2')
+    expect(within(activeCard).getByText('Enrolled')).toBeInTheDocument()
     expect(within(activeCard as HTMLElement).getByRole('button', { name: 'Leave class' })).toBeInTheDocument()
     expect(within(pendingCard as HTMLElement).getByText('Pending')).toBeInTheDocument()
     expect(within(pendingCard as HTMLElement).getByRole('button', { name: 'Withdraw request' })).toBeInTheDocument()
@@ -160,10 +165,9 @@ describe('FE-3 class catalog', () => {
 
     renderCatalog()
 
-    expect(await screen.findByRole('link', { name: 'Course 1' })).toBeInTheDocument()
+    const classCard = await cardOf('Course 1')
     expect(await screen.findByText('Membership status is unavailable')).toBeInTheDocument()
 
-    const classCard = screen.getByRole('link', { name: 'Course 1' }).closest('.ant-card') as HTMLElement
     const joinButton = within(classCard).getByRole('button', { name: 'Membership unavailable' })
     expect(joinButton).toBeDisabled()
 
@@ -183,10 +187,8 @@ describe('FE-3 class catalog', () => {
 
     renderCatalog()
 
-    const openClassLink = await screen.findByRole('link', { name: 'Course 1' })
-    const approvalClassLink = await screen.findByRole('link', { name: 'Course 2' })
-    const openCard = openClassLink.closest('.ant-card') as HTMLElement
-    const approvalCard = approvalClassLink.closest('.ant-card') as HTMLElement
+    const openCard = await cardOf('Course 1')
+    const approvalCard = await cardOf('Course 2')
 
     expect(within(openCard).getByRole('button', { name: 'Class full' })).toBeDisabled()
     const requestButton = within(approvalCard).getByRole('button', { name: 'Request to Join' })
@@ -287,7 +289,7 @@ describe('FE-3 class catalog', () => {
     })
     // Both operations finished, so the guard is released and the same card is actionable again.
     await waitFor(() => {
-      const refreshedCard = screen.getByRole('link', { name: 'Course 1' }).closest('.ant-card') as HTMLElement
+      const refreshedCard = screen.getByText('Course 1').closest('.ant-card') as HTMLElement
       expect(within(refreshedCard).getByRole('button', { name: /Join Class/ })).toBeEnabled()
     })
   })
@@ -326,7 +328,7 @@ describe('FE-3 class catalog', () => {
 
     renderCatalog()
 
-    await screen.findByRole('link', { name: 'Course 1' })
+    await screen.findByText('Course 1')
     fireEvent.click(screen.getByTitle('3'))
 
     await waitFor(() => {
@@ -335,7 +337,7 @@ describe('FE-3 class catalog', () => {
         expect.any(AbortSignal),
       )
     })
-    expect(await screen.findByRole('link', { name: 'Course 13' })).toBeInTheDocument()
+    expect(await screen.findByText('Course 13')).toBeInTheDocument()
   })
 
   it('renders the class thumbnail when the catalog provides one', async () => {

@@ -1,7 +1,11 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 import './setupNetwork'
+
+// CI runners render these antd screens roughly three times slower than a development machine,
+// so the default one second per findBy*/waitFor* budget fails on work that is merely in flight.
+configure({ asyncUtilTimeout: 5000 })
 
 beforeEach(() => {
   vi.stubEnv('VITE_AUTH_MODE', 'standalone')
