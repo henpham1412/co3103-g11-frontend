@@ -63,6 +63,7 @@ const outlines = new Map<string, TutorOutline>(sampleClasses.map((item) => {
           sequence_order: material.sequence_order,
           status: material.status,
         })),
+        activities: lesson.activities ?? [],
       })),
     })),
   }];
@@ -145,15 +146,32 @@ export function getDemoTutorOutline(classId: string): TutorOutline {
   return structuredClone(result);
 }
 
-export function saveDemoChapter(classId: string, chapterId: string | undefined, payload: { title: string; description?: string | null; sequence_order: number; status: ContentVisibility }) {
+type DemoChapterWrite = { title?: string; description?: string | null; sequence_order?: number; status?: ContentVisibility };
+type DemoLessonWrite = DemoChapterWrite & { estimated_duration?: number | null };
+type DemoMaterialWrite = { title?: string; material_type?: MaterialKind; file_url?: string | null; content?: string | null; sequence_order?: number; status?: ContentVisibility };
+
+export function createDemoChapter(classId: string, payload: DemoChapterWrite): TutorChapter {
   const outline = requireOutline(classId);
-  if (chapterId) {
-    const chapter = findChapter(chapterId);
-    Object.assign(chapter, payload, { description: payload.description ?? null });
-    return chapter;
-  }
-  const chapter: TutorChapter = { chapter_id: makeId("chapter"), class_id: classId, title: payload.title, description: payload.description ?? null, sequence_order: payload.sequence_order, status: payload.status, lessons: [] };
+  const chapter: TutorChapter = {
+    chapter_id: makeId("chapter"),
+    class_id: classId,
+    title: payload.title ?? "",
+    description: payload.description ?? null,
+    sequence_order: payload.sequence_order ?? outline.chapters.length,
+    status: payload.status ?? "PUBLISHED",
+    lessons: [],
+  };
   outline.chapters.push(chapter);
+  return chapter;
+}
+
+export function updateDemoChapter(chapterId: string, payload: DemoChapterWrite): TutorChapter {
+  const chapter = findChapter(chapterId);
+  // A PATCH carries only the changed fields, so absent keys must not blank the demo record.
+  if (payload.title !== undefined) chapter.title = payload.title;
+  if ("description" in payload) chapter.description = payload.description ?? null;
+  if (payload.sequence_order !== undefined) chapter.sequence_order = payload.sequence_order;
+  if (payload.status !== undefined) chapter.status = payload.status;
   return chapter;
 }
 
@@ -162,15 +180,30 @@ export function removeDemoChapter(chapterId: string) {
   outline.chapters = outline.chapters.filter((item) => item.chapter_id !== chapterId);
 }
 
-export function saveDemoLesson(chapterId: string, lessonId: string | undefined, payload: { title: string; description?: string | null; estimated_duration?: number | null; sequence_order: number; status: ContentVisibility }) {
+export function createDemoLesson(chapterId: string, payload: DemoLessonWrite): TutorLesson {
   const chapter = findChapter(chapterId);
-  if (lessonId) {
-    const lesson = findLesson(lessonId);
-    Object.assign(lesson, payload, { description: payload.description ?? null });
-    return lesson;
-  }
-  const lesson: TutorLesson = { lesson_id: makeId("lesson"), chapter_id: chapterId, title: payload.title, description: payload.description ?? null, estimated_duration: payload.estimated_duration ?? null, sequence_order: payload.sequence_order, status: payload.status, materials: [] };
+  const lesson: TutorLesson = {
+    lesson_id: makeId("lesson"),
+    chapter_id: chapterId,
+    title: payload.title ?? "",
+    description: payload.description ?? null,
+    estimated_duration: payload.estimated_duration ?? null,
+    sequence_order: payload.sequence_order ?? chapter.lessons.length,
+    status: payload.status ?? "PUBLISHED",
+    materials: [],
+    activities: [],
+  };
   chapter.lessons.push(lesson);
+  return lesson;
+}
+
+export function updateDemoLesson(lessonId: string, payload: DemoLessonWrite): TutorLesson {
+  const lesson = findLesson(lessonId);
+  if (payload.title !== undefined) lesson.title = payload.title;
+  if ("description" in payload) lesson.description = payload.description ?? null;
+  if ("estimated_duration" in payload) lesson.estimated_duration = payload.estimated_duration ?? null;
+  if (payload.sequence_order !== undefined) lesson.sequence_order = payload.sequence_order;
+  if (payload.status !== undefined) lesson.status = payload.status;
   return lesson;
 }
 
@@ -179,15 +212,36 @@ export function removeDemoLesson(lessonId: string) {
   chapter.lessons = chapter.lessons.filter((item) => item.lesson_id !== lessonId);
 }
 
-export function saveDemoMaterial(lessonId: string, materialId: string | undefined, payload: { title: string; material_type: MaterialKind; file_url?: string | null; content?: string | null; sequence_order: number; status: ContentVisibility }) {
+export function createDemoMaterial(lessonId: string, payload: DemoMaterialWrite): TutorMaterial {
   const lesson = findLesson(lessonId);
-  if (materialId) {
-    const material = findMaterial(materialId);
-    Object.assign(material, payload, { file_url: payload.file_url ?? null, content: payload.content ?? null });
-    return material;
-  }
-  const material: TutorMaterial = { material_id: makeId("material"), lesson_id: lessonId, title: payload.title, material_type: payload.material_type, file_url: payload.file_url ?? null, content: payload.content ?? null, sequence_order: payload.sequence_order, status: payload.status };
+  const material: TutorMaterial = {
+    material_id: makeId("material"),
+    lesson_id: lessonId,
+    title: payload.title ?? "",
+    material_type: payload.material_type ?? "TEXT",
+    file_url: payload.file_url ?? null,
+    content: payload.content ?? null,
+    sequence_order: payload.sequence_order ?? lesson.materials.length,
+    status: payload.status ?? "PUBLISHED",
+  };
   lesson.materials.push(material);
+  return material;
+}
+
+export function updateDemoMaterial(materialId: string, payload: DemoMaterialWrite): TutorMaterial {
+  const material = findMaterial(materialId);
+  if (payload.title !== undefined) material.title = payload.title;
+  if ("content" in payload) material.content = payload.content ?? null;
+  if ("file_url" in payload) material.file_url = payload.file_url ?? null;
+  if (payload.sequence_order !== undefined) material.sequence_order = payload.sequence_order;
+  if (payload.status !== undefined) material.status = payload.status;
+  return material;
+}
+
+// The demo store mints the same relative asset URL the upload endpoint returns, so the
+// student page exercises the real download path shape without a backend.
+export function uploadDemoMaterial(lessonId: string, payload: DemoMaterialWrite, fileName: string): TutorMaterial {
+  const material = createDemoMaterial(lessonId, { ...payload, content: null, file_url: `/api/v1/materials/files/demo-${encodeURIComponent(fileName)}` });
   return material;
 }
 

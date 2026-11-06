@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Spin, Tag, Typography, message } from "antd";
 import { ArrowLeftOutlined, ArrowRightOutlined, FileTextOutlined, LinkOutlined, VideoCameraOutlined } from "@ant-design/icons";
-import { isAxiosError } from "axios";
 import { Link, useParams } from "react-router-dom";
 
 import StudentWorkspaceLayout from "../../../components/layout/StudentWorkspaceLayout";
+import { normalizeApiError } from "@/api/apiError";
 import {
   getClassDetails,
   getClassOutline,
@@ -13,7 +13,7 @@ import {
   getStudentLessonMaterials,
 } from "../api/classApi";
 import type { ClassCatalogItem, ClassOutlineLesson, ClassOutlineMaterial, ClassOutlineResponse } from "../types";
-import { getLessonNavigation, getMaterialDisplay } from "../student-lesson-model.mjs";
+import { getLessonNavigation, getMaterialDisplay } from "../student-lesson-model";
 import "../student-lesson.css";
 
 interface StudentLessonPageData {
@@ -48,10 +48,10 @@ export default function StudentLessonPage() {
           setResult({ requestKey, classItem, outline, lesson, materials });
         }
       })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setResult({ requestKey, error: errorMessage(error), status: errorStatus(error) });
-        }
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return;
+        const failure = normalizeApiError(cause);
+        setResult({ requestKey, error: failure.message, status: failure.status });
       });
     return () => controller.abort();
   }, [classId, lessonId, requestKey]);
@@ -61,14 +61,21 @@ export default function StudentLessonPage() {
     content = <div className="student-lesson__loading" role="status" aria-live="polite"><Spin /><span>Loading lesson…</span></div>;
   } else if (page?.error) {
     content = page.status === 403 ? (
-      <Alert type="warning" showIcon message="You do not have access to this lesson" description="Join the class or wait for tutor approval before opening its learning content." />
+      <Alert type="warning" showIcon title="You do not have access to this lesson" description="Join the class or wait for tutor approval before opening its learning content." />
     ) : page.status === 404 ? (
-      <Alert type="warning" showIcon message="Lesson is unavailable" description="It may have been hidden, removed, or is not part of this class." />
+      <Alert type="warning" showIcon title="Lesson is unavailable" description="It may have been hidden, removed, or is not part of this class." />
     ) : (
-      <Alert type="error" showIcon message="Could not load this lesson" description={page.error} />
+      <Alert type="error" showIcon title="Could not load this lesson" description={page.error} />
     );
   } else if (!page?.classItem || !page.lesson || !navigation.current) {
-    content = <Empty description="This lesson is not in the published class outline." />;
+    content = (
+      <Alert
+        type="warning"
+        showIcon
+        title="This lesson is not in the published outline"
+        description="A lesson stays hidden when it is unpublished itself, when its chapter is hidden, or when it belongs to another class."
+      />
+    );
   } else {
     content = (
       <>
@@ -81,7 +88,7 @@ export default function StudentLessonPage() {
             <Typography.Title level={2}>{page.lesson.title}</Typography.Title>
             <div className="student-lesson__meta">
               {page.lesson.estimated_duration != null && <Tag>{page.lesson.estimated_duration} mins</Tag>}
-              <Tag color="blue">Published</Tag>
+              {page.lesson.status && <Tag color={page.lesson.status === "PUBLISHED" ? "green" : "default"}>{page.lesson.status}</Tag>}
               <span>{page.classItem.tutor.full_name} · {page.classItem.class_code}</span>
             </div>
           </div>
@@ -109,11 +116,30 @@ export default function StudentLessonPage() {
           )}
         </section>
 
+        <section className="student-lesson__activities" aria-labelledby="lesson-activities-heading">
+          <div className="student-lesson__section-title">
+            <Typography.Title id="lesson-activities-heading" level={4}>Quizzes and assignments</Typography.Title>
+          </div>
+          {(navigation.current.activities ?? []).filter((activity) => activity.status !== "HIDDEN").length === 0 ? (
+            <Empty description="No published quizzes or assignments for this lesson." />
+          ) : (
+            <div className="student-lesson__activity-list">
+              {(navigation.current.activities ?? []).filter((activity) => activity.status !== "HIDDEN").map((activity) => (
+                <Link key={activity.activity_id} to={`/classes/${classId}/lessons/${lessonId}/activities/${activity.activity_id}`}>
+                  <Button type={activity.activity_type === "QUIZ" ? "primary" : "default"}>
+                    {activity.activity_type === "QUIZ" ? "Take quiz" : "Open assignment"} · {activity.title}
+                  </Button>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
         <Alert
           className="student-lesson__progress-note"
           type="info"
           showIcon
-          message="Opening a lesson does not mark it complete."
+          title="Opening a lesson does not mark it complete."
           description="Learning progress updates are not exposed by the current LMS APIs."
         />
 
@@ -153,7 +179,7 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
         <Typography.Text strong>{material.title}</Typography.Text>
         {display === "text" && <div className="student-lesson__prose">{material.content}</div>}
         {display === "link" && <a href={material.file_url ?? undefined} target="_blank" rel="noreferrer">Open external resource</a>}
-        {display === "file-unavailable" && (material.file_url ? (
+        {display === "file" && (
           <Button
             type="link"
             disabled={import.meta.env.VITE_DEMO_MODE === "true"}
@@ -170,8 +196,8 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
                 link.click();
                 link.remove();
                 window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-              } catch (error) {
-                message.error(error instanceof Error ? error.message : "Could not download this material.");
+              } catch (cause) {
+                message.error(normalizeApiError(cause).message || "Could not download this material.");
               } finally {
                 setDownloading(false);
               }
@@ -179,21 +205,10 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
           >
             Download material
           </Button>
-        ) : <Typography.Text type="secondary">No file is available for this material.</Typography.Text>)}
-        {display === "invalid" && <Typography.Text type="secondary">This material has no supported content.</Typography.Text>}
+        )}
+        {display === "unavailable" && <Typography.Text type="secondary">This material has no content or file to open.</Typography.Text>}
       </div>
       <Tag>{material.material_type}</Tag>
     </Card>
   );
-}
-
-function errorStatus(error: unknown) {
-  return isAxiosError(error) ? error.response?.status : undefined;
-}
-
-function errorMessage(error: unknown) {
-  if (isAxiosError<{ message?: string; error?: string }>(error)) {
-    return error.response?.data?.message ?? error.response?.data?.error ?? error.message;
-  }
-  return error instanceof Error ? error.message : "An unexpected error occurred.";
 }

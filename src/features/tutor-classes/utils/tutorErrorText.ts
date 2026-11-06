@@ -39,6 +39,23 @@ export function tutorErrorText(error: unknown): string {
   return apiError.message;
 }
 
+// FILE_TOO_LARGE and UNSUPPORTED_MEDIA_TYPE are shared with class thumbnails, whose copy
+// stays above. Material uploads use the storage rules for documents and videos instead.
+const contentCodeMessages: Record<string, string> = {
+  FILE_TOO_LARGE: "The file is larger than the limit for this material kind.",
+  UNSUPPORTED_MEDIA_TYPE: "That file type is not supported for this material kind.",
+  EMPTY_FILE: "Choose a file that is not empty.",
+  INVALID_MATERIAL_TYPE_FOR_UPLOAD: "Documents and videos are uploaded as files. Text and links use the form fields.",
+  FILE_STORAGE_FAILED: "The file could not be stored. Try the upload again.",
+  FILE_NOT_FOUND: "The stored file is no longer available.",
+};
+
+export function contentErrorText(error: unknown): string {
+  const code = normalizeApiError(error).code;
+  if (code && contentCodeMessages[code]) return contentCodeMessages[code];
+  return tutorErrorText(error);
+}
+
 export function isStaleTutorState(error: unknown): boolean {
   const code = normalizeApiError(error).code;
   return Boolean(code && staleCodes.has(code));

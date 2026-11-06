@@ -2,14 +2,19 @@ import { lmsClient } from "../../../api/lmsClient";
 import type { EnrollmentPolicy } from "../../classes/types";
 import type {
   CreateTutorClass,
-  ContentVisibility,
   MaterialKind,
+  TutorChapter,
+  TutorLesson,
+  TutorMaterial,
   TutorOutline,
   TutorClass,
   TutorClassPage,
   TutorMemberPage,
 } from "../types";
 import {
+  createDemoChapter,
+  createDemoLesson,
+  createDemoMaterial,
   createDemoTutorClass,
   getDemoTutorClasses,
   getDemoTutorClassMembers,
@@ -19,12 +24,13 @@ import {
   removeDemoMaterial,
   reorderDemoChapters,
   reorderDemoLessons,
-  saveDemoChapter,
-  saveDemoLesson,
-  saveDemoMaterial,
+  updateDemoChapter,
+  updateDemoLesson,
+  updateDemoMaterial,
   updateDemoTutorClass,
   updateDemoTutorMember,
   uploadDemoClassThumbnail,
+  uploadDemoMaterial,
 } from "./demoTutorClassApi";
 
 export async function getTutorClasses(
@@ -96,20 +102,41 @@ export async function getTutorOutline(classId: string, signal?: AbortSignal) {
   return response.data;
 }
 
-export async function createChapter(classId: string, payload: {
-  title: string; description?: string; sequence_order: number; status: ContentVisibility;
-}) {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return saveDemoChapter(classId, undefined, payload);
-  const response = await lmsClient.post(`/classes/${classId}/chapters`, payload);
-  return response.data;
+export type ChapterWrite = Partial<Pick<TutorChapter, "title" | "description" | "sequence_order" | "status">>;
+export type LessonWrite = ChapterWrite & Partial<Pick<TutorLesson, "estimated_duration">>;
+export type MaterialWrite = Partial<Pick<TutorMaterial, "title" | "content" | "file_url" | "sequence_order" | "status">>;
+
+// Mirrors LocalMaterialStorageService: the media type is checked against the bytes, and the
+// size ceiling differs per material type, so the form cannot promise an upload the server refuses.
+export const MATERIAL_UPLOAD_EXTENSIONS = {
+  DOCUMENT: [".pdf", ".docx", ".pptx"],
+  VIDEO: [".mp4", ".webm"],
+} as const;
+
+export function materialExtensionAllowed(kind: "DOCUMENT" | "VIDEO", fileName: string) {
+  const extension = fileName.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
+  return (MATERIAL_UPLOAD_EXTENSIONS[kind] as readonly string[]).includes(extension);
 }
 
-export async function updateChapter(chapterId: string, payload: Partial<{
-  title: string; description: string | null; sequence_order: number; status: ContentVisibility;
-}>) {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return saveDemoChapter("", chapterId, payload as { title: string; description?: string | null; sequence_order: number; status: ContentVisibility });
-  const response = await lmsClient.patch(`/chapters/${chapterId}`, payload);
-  return response.data;
+export const MATERIAL_UPLOAD_LIMITS: Record<"DOCUMENT" | "VIDEO", { accept: string; maxBytes: number; label: string }> = {
+  DOCUMENT: {
+    accept: ".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    maxBytes: 50 * 1024 * 1024,
+    label: "PDF, DOCX or PPTX up to 50 MB",
+  },
+  VIDEO: { accept: ".mp4,.webm,video/mp4,video/webm", maxBytes: 200 * 1024 * 1024, label: "MP4 or WebM up to 200 MB" },
+};
+
+// Content writes answer with the single item, but every caller reloads the outline to get the
+// parent's children back, so the responses are deliberately not part of the surface.
+export async function createChapter(classId: string, payload: ChapterWrite): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") { createDemoChapter(classId, payload); return; }
+  await lmsClient.post(`/classes/${classId}/chapters`, payload);
+}
+
+export async function updateChapter(chapterId: string, payload: ChapterWrite): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") { updateDemoChapter(chapterId, payload); return; }
+  await lmsClient.patch(`/chapters/${chapterId}`, payload);
 }
 
 export async function deleteChapter(chapterId: string) {
@@ -117,25 +144,14 @@ export async function deleteChapter(chapterId: string) {
   await lmsClient.delete(`/chapters/${chapterId}`);
 }
 
-export async function createLesson(chapterId: string, payload: {
-  title: string; description?: string; estimated_duration?: number | null;
-  sequence_order: number; status: ContentVisibility;
-}) {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return saveDemoLesson(chapterId, undefined, payload);
-  const response = await lmsClient.post(`/chapters/${chapterId}/lessons`, payload);
-  return response.data;
+export async function createLesson(chapterId: string, payload: LessonWrite): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") { createDemoLesson(chapterId, payload); return; }
+  await lmsClient.post(`/chapters/${chapterId}/lessons`, payload);
 }
 
-export async function updateLesson(lessonId: string, payload: Partial<{
-  title: string; description: string | null; estimated_duration: number | null;
-  sequence_order: number; status: ContentVisibility;
-}>) {
-  if (import.meta.env.VITE_DEMO_MODE === "true") {
-    const { chapter_id: chapterId } = findDemoLessonParent(lessonId);
-    return saveDemoLesson(chapterId, lessonId, payload as { title: string; description?: string | null; estimated_duration?: number | null; sequence_order: number; status: ContentVisibility });
-  }
-  const response = await lmsClient.patch(`/lessons/${lessonId}`, payload);
-  return response.data;
+export async function updateLesson(lessonId: string, payload: LessonWrite): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") { updateDemoLesson(lessonId, payload); return; }
+  await lmsClient.patch(`/lessons/${lessonId}`, payload);
 }
 
 export async function deleteLesson(lessonId: string) {
@@ -143,25 +159,24 @@ export async function deleteLesson(lessonId: string) {
   await lmsClient.delete(`/lessons/${lessonId}`);
 }
 
-export async function createMaterial(lessonId: string, payload: {
-  title: string; material_type: MaterialKind; file_url?: string | null; content?: string | null;
-  sequence_order: number; status: ContentVisibility;
-}) {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return saveDemoMaterial(lessonId, undefined, payload);
-  const response = await lmsClient.post(`/lessons/${lessonId}/materials`, payload);
-  return response.data;
+export async function createMaterial(lessonId: string, payload: MaterialWrite & { title: string; material_type: MaterialKind }): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") { createDemoMaterial(lessonId, payload); return; }
+  await lmsClient.post(`/lessons/${lessonId}/materials`, payload);
 }
 
-export async function updateMaterial(materialId: string, payload: Partial<{
-  title: string; content: string | null; file_url: string | null;
-  sequence_order: number; status: ContentVisibility;
-}>) {
-  if (import.meta.env.VITE_DEMO_MODE === "true") {
-    const { lesson_id: lessonId, material_type: materialType } = findDemoMaterialParent(materialId);
-    return saveDemoMaterial(lessonId, materialId, { ...payload, material_type: materialType } as { title: string; material_type: MaterialKind; file_url?: string | null; content?: string | null; sequence_order: number; status: ContentVisibility });
-  }
-  const response = await lmsClient.patch(`/materials/${materialId}`, payload);
-  return response.data;
+// DOCUMENT and VIDEO materials have no JSON path: the bytes travel with a metadata part,
+// and the server rejects any file_url or content sent alongside them.
+export async function uploadMaterial(lessonId: string, metadata: MaterialWrite & { title: string; material_type: "DOCUMENT" | "VIDEO" }, file: File): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") { uploadDemoMaterial(lessonId, metadata, file.name); return; }
+  const body = new FormData();
+  body.append("metadata", new Blob([JSON.stringify({ ...metadata, file_url: null, content: null })], { type: "application/json" }));
+  body.append("file", file);
+  await lmsClient.post(`/lessons/${lessonId}/materials`, body);
+}
+
+export async function updateMaterial(materialId: string, payload: MaterialWrite): Promise<void> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") { updateDemoMaterial(materialId, payload); return; }
+  await lmsClient.patch(`/materials/${materialId}`, payload);
 }
 
 export async function deleteMaterial(materialId: string) {
@@ -179,26 +194,12 @@ export async function reorderLessons(chapterId: string, lessonIds: string[]) {
   await lmsClient.put(`/chapters/${chapterId}/lesson-order`, { lesson_ids: lessonIds });
 }
 
-function findDemoLessonParent(lessonId: string) {
-  for (const classId of ["class-001", "class-002", "class-003", "class-004", "class-005", "class-006"]) {
-    const outline = getDemoTutorOutline(classId);
-    const chapter = outline.chapters.find((item) => item.lessons.some((lesson) => lesson.lesson_id === lessonId));
-    if (chapter) return { chapter_id: chapter.chapter_id };
-  }
-  throw new Error("Demo lesson not found.");
-}
-
-function findDemoMaterialParent(materialId: string) {
-  for (const classId of ["class-001", "class-002", "class-003", "class-004", "class-005", "class-006"]) {
-    const outline = getDemoTutorOutline(classId);
-    for (const chapter of outline.chapters) {
-      for (const lesson of chapter.lessons) {
-        const material = lesson.materials.find((item) => item.material_id === materialId);
-        if (material) return { lesson_id: lesson.lesson_id, material_type: material.material_type };
-      }
-    }
-  }
-  throw new Error("Demo material not found.");
+// Materials have no order endpoint, so a swap writes the two exchanged positions directly.
+export async function swapMaterialOrder(first: TutorMaterial, second: TutorMaterial) {
+  await Promise.all([
+    updateMaterial(first.material_id, { sequence_order: second.sequence_order }),
+    updateMaterial(second.material_id, { sequence_order: first.sequence_order }),
+  ]);
 }
 
 // The thumbnail is a separate multipart write, so the JSON class-settings PATCH never

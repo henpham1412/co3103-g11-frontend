@@ -4,6 +4,7 @@ import { defaultExclude, defineConfig } from 'vitest/config'
 
 const pureTests = [
   'src/features/auth/utils/*.test.ts', 'src/utils/*.test.ts',
+  'src/features/classes/*.test.ts',
   'src/api/apiError.test.ts', 'src/api/clients.test.ts', 'src/api/authMapping.test.ts', 'src/app/theme.test.ts',
 ]
 const storageTests = ['src/features/auth/services/*.test.ts']

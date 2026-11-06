@@ -1,4 +1,4 @@
-import type { ContentVisibility, EnrollmentPolicy, MaterialKind, MembershipStatus } from "../classes/types";
+import type { ClassOutlineActivity, ContentVisibility, EnrollmentPolicy, MaterialKind, MembershipStatus } from "../classes/types";
 
 export interface TutorClass {
   class_id: string;
@@ -76,6 +76,7 @@ export interface TutorLesson {
   sequence_order: number;
   status: ContentVisibility;
   materials: TutorMaterial[];
+  activities?: ClassOutlineActivity[];
 }
 
 export interface TutorMaterial {

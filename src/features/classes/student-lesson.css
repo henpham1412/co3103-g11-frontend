@@ -13,6 +13,8 @@
 .student-lesson__material-card .ant-card-body { display: flex; align-items: flex-start; gap: 14px; }
 .student-lesson__material-icon { color: #2563eb; font-size: 18px; padding-top: 2px; }
 .student-lesson__material-body { display: grid; gap: 8px; flex: 1; min-width: 0; }
+.student-lesson__activities { margin-top: 24px; }
+.student-lesson__activity-list { display: flex; flex-wrap: wrap; gap: 12px; }
 .student-lesson__progress-note { margin-top: 24px; }
 .student-lesson__lesson-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 24px; padding: 16px 0; border-top: 1px solid #e5eaf2; }
 .student-lesson__lesson-nav a .ant-btn { display: flex; align-items: center; gap: 8px; min-height: 48px; }
