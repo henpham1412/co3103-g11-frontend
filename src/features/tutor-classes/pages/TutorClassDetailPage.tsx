@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Avatar, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Spin, Tag, Tooltip, Typography, Upload, message } from "antd";
+import { Alert, App, Avatar, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Spin, Tag, Tooltip, Typography, Upload } from "antd";
 import { FolderOpenOutlined } from "@ant-design/icons";
 import { Link, useParams } from "react-router-dom";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
@@ -22,6 +22,7 @@ const ROSTER_SORTS = [
 ];
 
 export default function TutorClassDetailPage() {
+  const { message } = App.useApp();
   const { classId = "" } = useParams();
   const [details, setDetails] = useState<ClassCatalogItem>();
   const [activeMembers, setActiveMembers] = useState<TutorMemberPage>();

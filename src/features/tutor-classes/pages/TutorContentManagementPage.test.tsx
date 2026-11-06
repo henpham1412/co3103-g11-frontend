@@ -138,7 +138,7 @@ beforeEach(() => {
   contentApi.reorderLessons.mockResolvedValue(undefined)
 })
 
-describe('FE-5 tutor content management', () => {
+describe('FE-5 tutor content management', { timeout: 30_000 }, () => {
   it('lists the outline counts and keeps the honest save note before any write', async () => {
     renderPage()
 

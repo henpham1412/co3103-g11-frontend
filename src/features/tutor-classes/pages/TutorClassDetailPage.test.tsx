@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -68,11 +69,13 @@ const pendingMember: TutorMember = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/tutor/classes/class-123']}>
-      <Routes>
-        <Route path="/tutor/classes/:classId" element={<TutorClassDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <App>
+      <MemoryRouter initialEntries={['/tutor/classes/class-123']}>
+        <Routes>
+          <Route path="/tutor/classes/:classId" element={<TutorClassDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
 }
 

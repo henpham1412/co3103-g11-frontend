@@ -7,7 +7,7 @@ import {
   Collapse,
   Descriptions,
   Empty,
-  message,
+  App,
   Popconfirm,
   Spin,
   Tabs,
@@ -50,6 +50,7 @@ interface ClassMembershipResult {
 }
 
 export default function ClassDetailPage() {
+  const { message } = App.useApp();
   const { classId = "" } = useParams();
   // Details, outline and membership are one server-owned snapshot: a membership write moves
   // the seat count and can unlock the outline, so a finished write re-reads all three.

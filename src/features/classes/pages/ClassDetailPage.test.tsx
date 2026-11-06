@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AxiosError, type AxiosResponse } from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -80,11 +81,13 @@ const outlineWithActivities: ClassOutlineResponse = {
 
 function renderDetails() {
   return render(
-    <MemoryRouter initialEntries={['/classes/class-123']}>
-      <Routes>
-        <Route path="/classes/:classId" element={<ClassDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <App>
+      <MemoryRouter initialEntries={['/classes/class-123']}>
+        <Routes>
+          <Route path="/classes/:classId" element={<ClassDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
 }
 
