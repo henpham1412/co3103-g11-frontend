@@ -222,15 +222,27 @@ export default function ClassDetailPage() {
           key: chapter.chapter_id,
           label: <strong>Chapter {chapter.sequence_order + 1} · {chapter.title}</strong>,
           children: chapter.lessons.length > 0 ? (
-            chapter.lessons.map((lesson) => (
+            chapter.lessons.flatMap((lesson) => [
               <div className="class-detail__lesson" key={lesson.lesson_id}>
                 <span className="class-detail__lesson-check"><CheckCircleOutlined /></span>
                 <span>{lesson.title}</span>
                 {lesson.estimated_duration != null && (
                   <Tag variant="filled">{lesson.estimated_duration} mins</Tag>
                 )}
-              </div>
-            ))
+              </div>,
+              ...(lesson.activities && lesson.activities.length > 0 ? [
+                <div className="class-detail__activities" key={`${lesson.lesson_id}-activities`}>
+                  {lesson.activities.map((activity) => (
+                    <span className="class-detail__activity" key={activity.activity_id}>
+                      <Tag color={activity.activity_type === "QUIZ" ? "blue" : "orange"}>
+                        {activity.activity_type === "QUIZ" ? "Quiz" : "Assignment"}
+                      </Tag>
+                      <span>{activity.title}</span>
+                    </span>
+                  ))}
+                </div>,
+              ] : []),
+            ])
           ) : (
             <Typography.Text type="secondary">No published lessons yet.</Typography.Text>
           ),

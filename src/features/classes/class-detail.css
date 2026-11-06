@@ -25,6 +25,10 @@
 .class-detail__lesson:last-child { border-bottom: 0; }
 .class-detail__lesson > span:nth-child(2) { flex: 1; }
 .class-detail__lesson-check { width: 18px; color: #16a34a; }
+.class-detail__lesson:has(+ .class-detail__activities) { border-bottom: 0; }
+.class-detail__activities { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 0 30px; padding: 0 0 12px; border-bottom: 1px solid #edf0f5; }
+.class-detail__activities:last-child { border-bottom: 0; }
+.class-detail__activity { display: inline-flex; align-items: center; gap: 8px; color: #475569; }
 .class-detail__side-panels { display: grid; gap: 18px; }
 .class-detail__outcome { display: flex; align-items: flex-start; gap: 9px; color: #475569; }
 .class-detail__outcome .anticon, .class-detail__approved .anticon { color: #2563eb; }

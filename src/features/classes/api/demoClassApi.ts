@@ -83,6 +83,24 @@ export function getDemoOutline(classId: string): ClassOutlineResponse {
         title: lessonTitle,
         sequence_order: lessonIndex,
         estimated_duration: 25 + lessonIndex * 5,
+        activities: [
+          {
+            activity_id: `demo-activity-${classId}-${chapterIndex + 1}-${lessonIndex + 1}-quiz`,
+            title: `${lessonTitle} quiz`,
+            activity_type: "QUIZ" as const,
+            sequence_order: 0,
+          },
+          ...(lessonIndex % 2 === 1
+            ? [
+                {
+                  activity_id: `demo-activity-${classId}-${chapterIndex + 1}-${lessonIndex + 1}-assignment`,
+                  title: `${lessonTitle} assignment`,
+                  activity_type: "ASSIGNMENT" as const,
+                  sequence_order: 1,
+                },
+              ]
+            : []),
+        ],
       })),
     })),
   };

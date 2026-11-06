@@ -50,9 +50,20 @@ export interface ClassOutlineChapter {
   lessons: ClassOutlineLesson[];
 }
 
+export type ActivityType = "QUIZ" | "ASSIGNMENT";
+
+export interface ClassOutlineActivity {
+  activity_id: string;
+  title: string;
+  description?: string | null;
+  activity_type: ActivityType;
+  sequence_order: number;
+}
+
 export interface ClassOutlineLesson {
   lesson_id: string;
   title: string;
   sequence_order: number;
   estimated_duration?: number | null;
+  activities?: ClassOutlineActivity[];
 }

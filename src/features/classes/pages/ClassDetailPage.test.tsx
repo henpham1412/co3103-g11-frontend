@@ -52,6 +52,29 @@ const classOutline: ClassOutlineResponse = {
   ],
 }
 
+const outlineWithActivities: ClassOutlineResponse = {
+  class_id: 'class-123',
+  chapters: [
+    {
+      chapter_id: 'chapter-1',
+      title: 'Getting started',
+      sequence_order: 0,
+      lessons: [
+        {
+          lesson_id: 'lesson-1',
+          title: 'Your first program',
+          sequence_order: 0,
+          estimated_duration: 25,
+          activities: [
+            { activity_id: 'activity-1', title: 'Java basics check', activity_type: 'QUIZ', sequence_order: 0 },
+            { activity_id: 'activity-2', title: 'Write a loop', activity_type: 'ASSIGNMENT', sequence_order: 1 },
+          ],
+        },
+      ],
+    },
+  ],
+}
+
 function renderDetails() {
   return render(
     <MemoryRouter initialEntries={['/classes/class-123']}>
@@ -96,6 +119,28 @@ describe('FE-3 class detail', () => {
     expect(api.getClassDetails).toHaveBeenCalledWith('class-123', expect.any(AbortSignal))
     expect(api.getClassOutline).toHaveBeenCalledWith('class-123', expect.any(AbortSignal))
     expect(api.getCurrentMemberships).toHaveBeenCalledWith(expect.any(AbortSignal))
+  })
+
+  it('lists the quiz and assignment placed in each published lesson', async () => {
+    api.getClassOutline.mockResolvedValue(outlineWithActivities)
+
+    renderDetails()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Chapter 1.*Getting started/ }))
+    expect(await screen.findByText('Java basics check')).toBeInTheDocument()
+    expect(screen.getByText('Write a loop')).toBeInTheDocument()
+    expect(screen.getAllByText('Quiz')).toHaveLength(1)
+    expect(screen.getAllByText('Assignment')).toHaveLength(1)
+  })
+
+  it('holds lesson activities behind the membership gate for a pending request', async () => {
+    api.getClassOutline.mockRejectedValue(forbidden('MEMBERSHIP_REQUIRED'))
+    api.getCurrentMemberships.mockResolvedValue([{ class_id: 'class-123', status: 'PENDING' }])
+
+    renderDetails()
+
+    expect(await screen.findByText('The syllabus is available to active class members.')).toBeInTheDocument()
+    expect(screen.queryByText('Java basics check')).not.toBeInTheDocument()
   })
 
   it('renders a clear empty-syllabus state for an empty outline', async () => {
