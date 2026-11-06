@@ -66,9 +66,19 @@ export function updateDemoTutorClass(classId: string, payload: Partial<Pick<Tuto
   return updated;
 }
 
-export function getDemoTutorClassMembers(classId: string, query: { status?: "PENDING" | "ACTIVE"; page?: number; size?: number } = {}): TutorMemberPage {
+export function getDemoTutorClassMembers(classId: string, query: { status?: "PENDING" | "ACTIVE"; q?: string; page?: number; size?: number; sort?: string } = {}): TutorMemberPage {
   let items = members.get(classId) ?? [];
   if (query.status) items = items.filter((item) => item.status === query.status);
+  const search = query.q?.trim().toLowerCase();
+  if (search) items = items.filter((item) => item.student_id.toLowerCase().includes(search));
+  const [field, direction] = (query.sort ?? "requested_at,desc").split(",");
+  const comparator: Record<string, (a: TutorMember, b: TutorMember) => number> = {
+    requested_at: (a, b) => (a.requested_at ?? "").localeCompare(b.requested_at ?? ""),
+    joined_at: (a, b) => (a.joined_at ?? "").localeCompare(b.joined_at ?? ""),
+    status: (a, b) => a.status.localeCompare(b.status),
+  };
+  const compare = comparator[field] ?? comparator.requested_at;
+  items = [...items].sort((a, b) => (direction === "asc" ? compare(a, b) : -compare(a, b)));
   const page = Math.max(1, query.page ?? 1);
   const size = Math.max(1, query.size ?? 20);
   return { items: items.slice((page - 1) * size, page * size), page, size, total_items: items.length, total_pages: Math.ceil(items.length / size) };
@@ -85,4 +95,12 @@ export function updateDemoTutorMember(classId: string, memberId: string, action:
     member.joined_at = new Date().toISOString();
     member.requested_at = null;
   }
+}
+
+export function uploadDemoClassThumbnail(classId: string, fileName: string): string {
+  const current = classes.get(classId);
+  if (!current) throw new Error("Demo class not found.");
+  const thumbnailUrl = `https://demo.invalid/thumbnails/${encodeURIComponent(fileName)}`;
+  classes.set(classId, { ...current, thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString() });
+  return thumbnailUrl;
 }

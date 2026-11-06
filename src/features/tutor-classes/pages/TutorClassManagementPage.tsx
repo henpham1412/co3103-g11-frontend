@@ -6,7 +6,9 @@ import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayou
 import { getClassDetails } from "../../classes/api/classApi";
 import type { ClassCatalogItem } from "../../classes/types";
 import { createTutorClass, getTutorClasses, updateTutorClass } from "../api/tutorClassApi";
+import { normalizeApiError } from "@/api/apiError";
 import type { CreateTutorClass, TutorClass } from "../types";
+import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
 
 const PAGE_SIZE = 20;
 
@@ -21,6 +23,7 @@ export default function TutorClassManagementPage() {
   const [status, setStatus] = useState<"ALL" | "ACTIVE" | "ARCHIVED">("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<CreateTutorClass>();
@@ -41,9 +44,12 @@ export default function TutorClassManagementPage() {
           ? current
           : result.items[0]?.class_id);
         setError(undefined);
+        setPermissionDenied(false);
       })
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted) setError(errorText(cause));
+        if (controller.signal.aborted) return;
+        if (normalizeApiError(cause).status === 403) setPermissionDenied(true);
+        setError(tutorErrorText(cause));
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -65,7 +71,8 @@ export default function TutorClassManagementPage() {
   }), [classes, searchApplied, status]);
 
   async function submitCreate() {
-    const values = await form.validateFields();
+    const values = await form.validateFields().catch(() => undefined);
+    if (!values) return;
     setSaving(true);
     try {
       const created = await createTutorClass(values);
@@ -76,7 +83,8 @@ export default function TutorClassManagementPage() {
       refresh();
       setSelectedId(created.class_id);
     } catch (cause) {
-      message.error(errorText(cause));
+      message.error(tutorErrorText(cause));
+      if (isStaleTutorState(cause)) refresh();
     } finally { setSaving(false); }
   }
 
@@ -86,7 +94,10 @@ export default function TutorClassManagementPage() {
       await updateTutorClass(selectedId, { status: "ARCHIVED" });
       message.success("Class archived. Membership and learning history are retained.");
       refresh();
-    } catch (cause) { message.error(errorText(cause)); }
+    } catch (cause) {
+      message.error(tutorErrorText(cause));
+      if (isStaleTutorState(cause)) refresh();
+    }
   }
 
   return (
@@ -94,10 +105,20 @@ export default function TutorClassManagementPage() {
       <main className="tutor-page">
         <div className="tutor-page__heading">
           <div><Typography.Title level={2}>Class Management</Typography.Title><Typography.Paragraph type="secondary">Create and manage your classes, enrollment and learning access.</Typography.Paragraph></div>
-          <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>Create Class</Button>
+          {!permissionDenied && <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>Create Class</Button>}
         </div>
-        <Alert className="tutor-class-info" type="info" showIcon message="Select a class to inspect its details and manage enrollment." />
-        {error && <Alert className="tutor-page__notice" type="error" showIcon message="Could not load your classes" description={error} />}
+        <Alert className="tutor-class-info" type="info" showIcon title="Select a class to inspect its details and manage enrollment." />
+        {permissionDenied ? (
+          <Alert
+            className="tutor-page__notice"
+            type="warning"
+            showIcon
+            title="Tutor class management is not available to your account"
+            description="The LMS refused /tutor/classes, so no class list or create action is shown. Sign in with an account that has the tutor role."
+          />
+        ) : error ? (
+          <Alert className="tutor-page__notice" type="error" showIcon title="Could not load your classes" description={error} />
+        ) : null}
         {loading ? <div className="tutor-page__loading"><Spin /></div> : (
           <div className="tutor-class-grid">
             <section className="tutor-panel">
@@ -149,9 +170,4 @@ export default function TutorClassManagementPage() {
       </main>
     </TutorWorkspaceLayout>
   );
-}
-
-function errorText(error: unknown) {
-  if (typeof error === "object" && error && "message" in error) return String(error.message);
-  return "The request could not be completed.";
 }

@@ -12,6 +12,7 @@ import {
   getDemoTutorClassMembers,
   updateDemoTutorClass,
   updateDemoTutorMember,
+  uploadDemoClassThumbnail,
 } from "./demoTutorClassApi";
 
 export async function getTutorClasses(
@@ -41,9 +42,17 @@ export async function updateTutorClass(
   return response.data;
 }
 
+export interface TutorMemberQuery {
+  status?: "PENDING" | "ACTIVE";
+  q?: string;
+  page?: number;
+  size?: number;
+  sort?: string;
+}
+
 export async function getTutorClassMembers(
   classId: string,
-  query: { status?: "PENDING" | "ACTIVE"; page?: number; size?: number } = {},
+  query: TutorMemberQuery = {},
   signal?: AbortSignal,
 ) {
   if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoTutorClassMembers(classId, query);
@@ -67,4 +76,17 @@ export async function rejectTutorMember(classId: string, memberId: string) {
 export async function removeTutorMember(classId: string, memberId: string) {
   if (import.meta.env.VITE_DEMO_MODE === "true") return updateDemoTutorMember(classId, memberId, "remove");
   await lmsClient.delete(`/classes/${classId}/members/${memberId}`);
+}
+
+// The thumbnail is a separate multipart write, so the JSON class-settings PATCH never
+// has to guess which fields the server accepts.
+export async function uploadClassThumbnail(classId: string, file: File): Promise<string> {
+  if (import.meta.env.VITE_DEMO_MODE === "true") return uploadDemoClassThumbnail(classId, file.name);
+  const body = new FormData();
+  body.append("file", file);
+  const response = await lmsClient.post<{ thumbnail_url: string }>(
+    `/classes/${classId}/thumbnail`,
+    body,
+  );
+  return response.data.thumbnail_url;
 }
