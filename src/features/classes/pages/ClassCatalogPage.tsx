@@ -7,7 +7,7 @@ import {
   Col,
   Empty,
   Input,
-  message,
+  App,
   Pagination,
   Popconfirm,
   Row,
@@ -52,6 +52,7 @@ const sortOptions = [
 ];
 
 export default function ClassCatalogPage() {
+  const { message } = App.useApp();
   const [searchText, setSearchText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [policy, setPolicy] = useState<EnrollmentPolicy | "ALL">("ALL");

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -47,11 +48,13 @@ const classDetails: ClassCatalogItem = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/tutor/classes']}>
-      <Routes>
-        <Route path="/tutor/classes" element={<TutorClassManagementPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <App>
+      <MemoryRouter initialEntries={['/tutor/classes']}>
+        <Routes>
+          <Route path="/tutor/classes" element={<TutorClassManagementPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
 }
 

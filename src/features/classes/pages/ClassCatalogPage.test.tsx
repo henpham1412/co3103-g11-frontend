@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -46,11 +47,13 @@ function catalogResponse(items: ClassCatalogItem[], page = 1, total = items.leng
 
 function renderCatalog() {
   return render(
-    <MemoryRouter initialEntries={['/classes']}>
-      <Routes>
-        <Route path="/classes" element={<ClassCatalogPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <App>
+      <MemoryRouter initialEntries={['/classes']}>
+        <Routes>
+          <Route path="/classes" element={<ClassCatalogPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
 }
 

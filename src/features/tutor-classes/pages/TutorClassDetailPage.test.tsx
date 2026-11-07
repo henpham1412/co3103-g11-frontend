@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,6 +10,7 @@ import type { TutorMember, TutorMemberPage } from '../types'
 const tutorApi = vi.hoisted(() => ({
   approveTutorMember: vi.fn(),
   getTutorClassMembers: vi.fn(),
+  getTutorOutline: vi.fn(),
   rejectTutorMember: vi.fn(),
   removeTutorMember: vi.fn(),
   updateTutorClass: vi.fn(),
@@ -67,12 +69,21 @@ const pendingMember: TutorMember = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/tutor/classes/class-123']}>
-      <Routes>
-        <Route path="/tutor/classes/:classId" element={<TutorClassDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <App>
+      <MemoryRouter initialEntries={['/tutor/classes/class-123']}>
+        <Routes>
+          <Route path="/tutor/classes/:classId" element={<TutorClassDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
+}
+
+/** On the FE-5 branch the tutor lands on the syllabus tab, so roster checks open Members first. */
+async function renderRoster() {
+  const view = renderPage()
+  fireEvent.click(await screen.findByRole('tab', { name: /^Member/ }))
+  return view
 }
 
 /** The roster is fetched twice per load: ACTIVE then PENDING. */
@@ -89,11 +100,12 @@ beforeEach(() => {
   tutorApi.removeTutorMember.mockResolvedValue(undefined)
   tutorApi.updateTutorClass.mockResolvedValue(classDetails)
   tutorApi.uploadClassThumbnail.mockResolvedValue('http://localhost:8081/api/v1/classes/class-123/thumbnail')
+  tutorApi.getTutorOutline.mockResolvedValue({ class_id: 'class-123', chapters: [] })
 })
 
 describe('FE-4 tutor class detail', () => {
   it('shows both membership states and decides pending requests through the API', async () => {
-    const { container } = renderPage()
+    const { container } = await renderRoster()
 
     expect(await screen.findByText('Programming Foundations')).toBeInTheDocument()
     expect(container.textContent).toContain('20210999')
@@ -107,8 +119,7 @@ describe('FE-4 tutor class detail', () => {
   })
 
   it('confirms before removing an active member and keeps learning records in the message', async () => {
-    renderPage()
-    await screen.findByText('Programming Foundations')
+    await renderRoster()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     expect(await screen.findByText('Learning records are retained')).toBeInTheDocument()
@@ -118,8 +129,7 @@ describe('FE-4 tutor class detail', () => {
   })
 
   it('sends the applied roster search and ordering to the members API', async () => {
-    renderPage()
-    await screen.findByText('Programming Foundations')
+    await renderRoster()
 
     fireEvent.change(screen.getByPlaceholderText('Search by name or email'), { target: { value: 'student-11' } })
     fireEvent.keyDown(screen.getByPlaceholderText('Search by name or email'), { key: 'Enter', code: 'Enter' })
@@ -148,14 +158,15 @@ describe('FE-4 tutor class detail', () => {
     expect(await screen.findByText('This class is not available in your tutor workspace')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Class Settings' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Class members')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /^Member/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Manage content/ })).not.toBeInTheDocument()
   })
 
   it('blocks approving a request while the class has no free seat', async () => {
     rosterFor([activeMember], [pendingMember])
     classApi.getClassDetails.mockResolvedValue({ ...classDetails, active_member_count: 20, max_capacity: 20 })
 
-    renderPage()
+    await renderRoster()
 
     expect(await screen.findByText('This class is full')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
@@ -163,8 +174,7 @@ describe('FE-4 tutor class detail', () => {
   })
 
   it('explains a stale membership and reloads the roster instead of leaving it on screen', async () => {
-    renderPage()
-    await screen.findByText('Programming Foundations')
+    await renderRoster()
     const rosterCallsBefore = tutorApi.getTutorClassMembers.mock.calls.length
     tutorApi.approveTutorMember.mockRejectedValue(apiFailure(409, 'INVALID_MEMBERSHIP_STATE'))
 

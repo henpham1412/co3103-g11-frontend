@@ -6,6 +6,7 @@ const pureTests = [
   'src/features/profile/utils/*.test.ts', 'src/api/profileMapping.test.ts',
   'src/api/passwordRecoveryMapping.test.ts',
   'src/features/auth/utils/*.test.ts', 'src/utils/*.test.ts',
+  'src/features/classes/*.test.ts',
   'src/api/apiError.test.ts', 'src/api/clients.test.ts', 'src/api/authMapping.test.ts', 'src/app/theme.test.ts',
 ]
 const storageTests = ['src/features/auth/services/*.test.ts']
@@ -14,7 +15,10 @@ const apiTests = ['src/api/authApi.test.ts', 'src/api/authInterceptors.test.ts',
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: [
+      { find: /^@testing-library\/react$/, replacement: fileURLToPath(new URL('./src/test/testingLibrary.tsx', import.meta.url)) },
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+    ],
   },
   test: {
     // Vite loads a developer's .env.local into the test process, and that file can switch on
