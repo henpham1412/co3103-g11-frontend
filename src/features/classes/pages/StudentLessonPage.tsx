@@ -170,7 +170,6 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
   const { message } = App.useApp();
   const [downloading, setDownloading] = useState(false);
   const display = getMaterialDisplay(material);
-  const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
   const icon = material.material_type === "VIDEO" ? <VideoCameraOutlined />
     : material.material_type === "URL" ? <LinkOutlined /> : <FileTextOutlined />;
 
@@ -181,10 +180,7 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
         <Typography.Text strong>{material.title}</Typography.Text>
         {display === "text" && <div className="student-lesson__prose">{material.content}</div>}
         {display === "link" && <a href={material.file_url ?? undefined} target="_blank" rel="noreferrer">Open external resource</a>}
-        {display === "file" && (demoMode ? (
-          // The demo store mints an asset key but holds no bytes, so there is nothing to fetch.
-          <Typography.Text type="secondary">Stored files are only served by the live LMS API, not by demo mode.</Typography.Text>
-        ) : (
+        {display === "file" && (
           <Button
             type="link"
             loading={downloading}
@@ -209,7 +205,7 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
           >
             Download material
           </Button>
-        ))}
+        )}
         {display === "unavailable" && <Typography.Text type="secondary">This material has no content or file to open.</Typography.Text>}
       </div>
       <Tag>{material.material_type}</Tag>

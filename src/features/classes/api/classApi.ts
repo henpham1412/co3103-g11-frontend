@@ -9,17 +9,6 @@ import type {
   EnrollmentPolicy,
   MembershipActionResponse,
 } from "../types";
-import {
-  endDemoMembership,
-  getDemoCatalog,
-  getDemoClass,
-  getDemoMemberships,
-  getDemoStudentLesson,
-  getDemoStudentLessonMaterials,
-  getDemoStudentOutline,
-  joinDemoClass,
-} from "./demoClassApi";
-
 export interface ClassCatalogQuery {
   q?: string;
   enrollment_policy?: EnrollmentPolicy;
@@ -32,7 +21,6 @@ export async function getClassCatalog(
   query: ClassCatalogQuery = {},
   signal?: AbortSignal,
 ): Promise<ClassCatalogResponse> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoCatalog(query);
   const response = await lmsClient.get<ClassCatalogResponse>("/classes", {
     params: query,
     signal,
@@ -43,7 +31,6 @@ export async function getClassCatalog(
 export async function getCurrentMemberships(
   signal?: AbortSignal,
 ): Promise<CurrentMembership[]> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoMemberships();
   const response = await lmsClient.get<CurrentMembership[]>("/me/classes", {
     signal,
   });
@@ -54,7 +41,6 @@ export async function joinClass(
   classId: string,
   policy: EnrollmentPolicy,
 ): Promise<MembershipActionResponse> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return joinDemoClass(classId, policy);
   const endpoint =
     policy === "OPEN"
       ? `/classes/${classId}/membership`
@@ -64,12 +50,10 @@ export async function joinClass(
 }
 
 export async function leaveClass(classId: string): Promise<void> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return endDemoMembership(classId);
   await lmsClient.delete(`/classes/${classId}/membership`);
 }
 
 export async function withdrawJoinRequest(classId: string): Promise<void> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return endDemoMembership(classId);
   await lmsClient.delete(`/classes/${classId}/membership-request`);
 }
 
@@ -77,7 +61,6 @@ export async function getClassDetails(
   classId: string,
   signal?: AbortSignal,
 ): Promise<ClassCatalogItem> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoClass(classId);
   const response = await lmsClient.get<ClassCatalogItem>(`/classes/${classId}`, {
     signal,
   });
@@ -88,7 +71,6 @@ export async function getClassOutline(
   classId: string,
   signal?: AbortSignal,
 ): Promise<ClassOutlineResponse> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoStudentOutline(classId);
   const response = await lmsClient.get<ClassOutlineResponse>(
     `/classes/${classId}/outline`,
     { signal },
@@ -100,7 +82,6 @@ export async function getStudentLesson(
   lessonId: string,
   signal?: AbortSignal,
 ): Promise<ClassOutlineLesson> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoStudentLesson(lessonId);
   const response = await lmsClient.get<ClassOutlineLesson>(`/lessons/${lessonId}`, { signal });
   return response.data;
 }
@@ -109,7 +90,6 @@ export async function getStudentLessonMaterials(
   lessonId: string,
   signal?: AbortSignal,
 ): Promise<ClassOutlineMaterial[]> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoStudentLessonMaterials(lessonId);
   const response = await lmsClient.get<ClassOutlineMaterial[]>(
     `/lessons/${lessonId}/materials`,
     { signal },
@@ -123,9 +103,6 @@ export async function downloadStudentMaterial(
   fileUrl: string,
   signal?: AbortSignal,
 ): Promise<{ blob: Blob; filename?: string }> {
-  if (import.meta.env.VITE_DEMO_MODE === "true") {
-    throw new Error("File downloads are not available in demo mode.");
-  }
   const baseUrl = lmsClient.defaults.baseURL ?? "";
   const base = new URL(baseUrl, window.location.href);
   const file = new URL(fileUrl, base);
