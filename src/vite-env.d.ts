@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  readonly VITE_DEMO_MODE?: string
   readonly VITE_AUTH_MODE?: string
   readonly VITE_LMS_CLIENT_ID?: string
   readonly VITE_LMS_REDIRECT_URI?: string

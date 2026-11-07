@@ -108,6 +108,17 @@ npm run dev
 
 Open the local URL printed in the terminal.
 
+The class screens also have an explicit fixture-backed mode, switched on by the
+checked-in `.env.demo`, for reviewing the layouts without a seeded backend:
+
+```bash
+npm run dev -- --mode demo
+```
+
+Only `VITE_DEMO_MODE` is set there, so sign-in and every other screen still use
+the configured Central Identity and LMS APIs. Tests pin the flag off
+(`vitest.config.ts`), so a local `.env.local` can never point the suite at fixtures.
+
 ## Available Scripts
 
 | Command | Description |
@@ -507,7 +518,7 @@ report is committed to this repository.
 
 ## Development Notes
 
-- Do not commit `node_modules/`, `dist/`, or local environment files.
+- Do not commit `node_modules/`, `dist/`, or your own environment files (`.env`, `.env.local`).
 - Keep `package-lock.json` committed so team members can install the same dependency versions.
 - Implement features incrementally and run linting and production builds before submitting a Pull Request.
 - Follow the repository's branch protection and Pull Request review workflow.

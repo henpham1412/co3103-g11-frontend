@@ -1,12 +1,20 @@
-import { Button } from "antd";
-import { createBrowserRouter } from "react-router-dom";
+﻿import { Button } from "antd";
+import { Navigate, createBrowserRouter } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { PublicOnlyRoute } from "@/features/auth/components/PublicOnlyRoute";
 
+import ClassActivityPlaceholderPage from "../features/classes/pages/ClassActivityPlaceholderPage";
+import ClassCatalogPage from "../features/classes/pages/ClassCatalogPage";
+import ClassDetailPage from "../features/classes/pages/ClassDetailPage";
+import TutorClassDetailPage from "../features/tutor-classes/pages/TutorClassDetailPage";
+import TutorClassManagementPage from "../features/tutor-classes/pages/TutorClassManagementPage";
+import TutorDashboardPage from "../features/tutor-classes/pages/TutorDashboardPage";
 import App from "./App";
 import NotFoundPage from "./NotFoundPage";
+import TutorWorkspaceSectionPage from "./TutorWorkspaceSectionPage";
+import WorkspaceSectionPage from "./WorkspaceSectionPage";
 
 const authFallback = (
   <AuthLayout>
@@ -45,6 +53,19 @@ export const router = createBrowserRouter([
               { path: 'profile', lazy: async () => ({ Component: (await import('@/features/profile/pages/ProfilePage')).default }) },
             ],
           },
+          { path: "/classes", element: <ClassCatalogPage /> },
+          { path: "/classes/:classId", element: <ClassDetailPage /> },
+          {
+            path: "/classes/:classId/lessons/:lessonId/activities/:activityId",
+            element: <ClassActivityPlaceholderPage />,
+          },
+          { path: "/dashboard", element: <WorkspaceSectionPage /> },
+          { path: "/discussion", element: <WorkspaceSectionPage /> },
+          { path: "/tutor", element: <Navigate to="/tutor/dashboard" replace /> },
+          { path: "/tutor/dashboard", element: <TutorDashboardPage /> },
+          { path: "/tutor/classes", element: <TutorClassManagementPage /> },
+          { path: "/tutor/classes/:classId", element: <TutorClassDetailPage /> },
+          { path: "/tutor/discussion", element: <TutorWorkspaceSectionPage /> },
         ],
       },
       {
@@ -60,10 +81,7 @@ export const router = createBrowserRouter([
           },
         ],
       },
-      {
-        path: "*",
-        element: <NotFoundPage />,
-      },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);

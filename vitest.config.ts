@@ -17,9 +17,16 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
+    // Vite loads a developer's .env.local into the test process, and that file can switch on
+    // the demo data source. The suite must always exercise the real transport against contract
+    // mocks, so the flag is pinned off here rather than inherited from whoever's local env.
+    env: { VITE_DEMO_MODE: '' },
     testTimeout: process.env.CI ? 45000 : 15000,
     // Limit JSDOM contention on CPU-constrained CI runners.
-    maxWorkers: process.env.CI ? 2 : 4,
+    // The jsdom + AntD screens mount the whole application per test, so four concurrent workers
+    // oversubscribe a four-core CI runner: the shared-authentication flow measured 20s per case
+    // under four workers against 9s under two, and the full suite still finished faster.
+    maxWorkers: process.env.CI ? 2 : 2,
     clearMocks: true,
     restoreMocks: true,
     unstubEnvs: true,
