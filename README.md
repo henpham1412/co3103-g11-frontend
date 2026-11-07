@@ -105,17 +105,6 @@ npm run dev
 
 Open the local URL printed in the terminal.
 
-The class screens also have an explicit fixture-backed mode, switched on by the
-checked-in `.env.demo`, for reviewing the layouts without a seeded backend:
-
-```bash
-npm run dev -- --mode demo
-```
-
-Only `VITE_DEMO_MODE` is set there, so sign-in and every other screen still use
-the configured Central Identity and LMS APIs. Tests pin the flag off
-(`vitest.config.ts`), so a local `.env.local` can never point the suite at fixtures.
-
 ## Available Scripts
 
 | Command | Description |
