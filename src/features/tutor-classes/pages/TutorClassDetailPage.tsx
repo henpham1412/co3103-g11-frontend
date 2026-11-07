@@ -12,7 +12,6 @@ import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
 const PAGE_SIZE = 20;
 const THUMBNAIL_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const THUMBNAIL_MAX_BYTES = 5 * 1024 * 1024;
-const ROSTER_QUERY_MAX = 100;
 const ROSTER_SORTS = [
   { value: "requested_at,desc", label: "Requested, newest first" },
   { value: "requested_at,asc", label: "Requested, oldest first" },
@@ -29,8 +28,6 @@ export default function TutorClassDetailPage() {
   const [removeCandidate, setRemoveCandidate] = useState<TutorMember>();
   const [activePage, setActivePage] = useState(1);
   const [pendingPage, setPendingPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [searchApplied, setSearchApplied] = useState("");
   const [sort, setSort] = useState("requested_at,desc");
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [thumbnailFile, setThumbnailFile] = useState<File>();
@@ -46,7 +43,8 @@ export default function TutorClassDetailPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const roster = { q: searchApplied.trim() || undefined, sort, size: PAGE_SIZE };
+    // The current LMS-3 members endpoint ignores q (F02), so it is not sent.
+    const roster = { sort, size: PAGE_SIZE };
     Promise.all([
       getClassDetails(classId, controller.signal),
       getTutorClassMembers(classId, { ...roster, status: "ACTIVE", page: activePage }, controller.signal),
@@ -66,13 +64,7 @@ export default function TutorClassDetailPage() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [classId, activePage, pendingPage, searchApplied, sort, reload]);
-
-  function runRosterSearch() {
-    setActivePage(1);
-    setPendingPage(1);
-    setSearchApplied(search);
-  }
+  }, [classId, activePage, pendingPage, sort, reload]);
 
   async function act(memberId: string, action: "approve" | "reject") {
     setBusyMember(memberId);
@@ -179,14 +171,12 @@ export default function TutorClassDetailPage() {
           </section>
 
           <section className="tutor-page__section tutor-panel">
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">Search matches the student name or email on the server, up to {ROSTER_QUERY_MAX} characters, and applies to both lists. The roster response only includes a student id, so names are not shown. Ordering is also applied by the server.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">The current members API does not filter by name or email, so no search query is sent. Rows show full_name and email when the response includes those fields; otherwise the full student id is shown. Ordering uses the server sort parameter.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
             {archived && <Alert className="tutor-page__notice" type="info" showIcon title="This class is archived" description="Approve, reject and remove stay closed. Set the lifecycle back to Active before changing membership." />}
             <div className="tutor-class-filters">
-              <Input.Search allowClear maxLength={ROSTER_QUERY_MAX} placeholder="Search by name or email" value={search} onChange={(event) => setSearch(event.target.value)} onSearch={runRosterSearch} />
               <Select value={sort} onChange={(value) => { setActivePage(1); setPendingPage(1); setSort(value); }} options={ROSTER_SORTS} aria-label="Roster ordering" />
-              <Button onClick={runRosterSearch}>Apply filters</Button>
             </div>
-            {activeMembers?.items.length ? <><MemberTable members={activeMembers.items} busyMember={busyMember} archived={archived} onRemove={setRemoveCandidate} /><Pagination style={{ marginTop: 16, textAlign: "right" }} current={activePage} pageSize={PAGE_SIZE} total={activeMembers.total_items} showSizeChanger={false} onChange={setActivePage} /></> : <Empty description={searchApplied ? "No active member matches this search" : "No active members"} />}
+            {activeMembers?.items.length ? <><MemberTable members={activeMembers.items} busyMember={busyMember} archived={archived} onRemove={setRemoveCandidate} /><Pagination style={{ marginTop: 16, textAlign: "right" }} current={activePage} pageSize={PAGE_SIZE} total={activeMembers.total_items} showSizeChanger={false} onChange={setActivePage} /></> : <Empty description="No active members" />}
           </section>
 
           <section className="tutor-page__section tutor-panel">
@@ -195,7 +185,7 @@ export default function TutorClassDetailPage() {
               {seatsAvailable === 0 && !archived && <Alert className="tutor-page__notice" type="warning" showIcon title="This class is full" description="Approving needs a free seat, so approvals are blocked until capacity increases or a member is removed." />}
               <PendingTable members={pendingMembers.items} busyMember={busyMember} archived={archived} canApprove={!archived && seatsAvailable !== 0} onAction={act} />
               <Pagination style={{ marginTop: 16, textAlign: "right" }} current={pendingPage} pageSize={PAGE_SIZE} total={pendingMembers.total_items} showSizeChanger={false} onChange={setPendingPage} />
-            </> : <Empty description={searchApplied ? "No pending request matches this search" : "No pending requests"} />}
+            </> : <Empty description="No pending requests" />}
           </section>
         </> : <Empty description="Class not found" />}
 
@@ -208,7 +198,7 @@ export default function TutorClassDetailPage() {
             <Form.Item name="prerequisites_description" label="Prerequisites"><Input /></Form.Item>
             <Form.Item name="enrollment_policy" label="Enrollment Policy"><Select options={[{ value: "OPEN", label: "Open enrollment" }, { value: "APPROVAL_REQUIRED", label: "Approval required" }]} /></Form.Item>
             <Form.Item name="status" label="Lifecycle Status"><Select options={[{ value: "ACTIVE", label: "Active" }, { value: "ARCHIVED", label: "Archived" }]} /></Form.Item>
-            <Form.Item label="Thumbnail" extra="JPEG, PNG or WebP up to 5 MB. Stored separately from the class settings.">
+            <Form.Item label="Thumbnail" extra="JPEG, PNG or WebP up to 5 MB, uploaded only after the settings are saved. The current LMS build has no POST /classes/{id}/thumbnail yet, so the upload can fail while the saved settings stay in place.">
               <Upload
                 accept={THUMBNAIL_TYPES.join(",")}
                 maxCount={1}
@@ -234,16 +224,30 @@ export default function TutorClassDetailPage() {
           </Form>
         </Modal>
         <Modal title="Remove Student from Class?" open={Boolean(removeCandidate)} onCancel={() => setRemoveCandidate(undefined)} onOk={confirmRemove} confirmLoading={busyMember === removeCandidate?.class_member_id} okText="Remove Member" okButtonProps={{ danger: true }}>
-          {removeCandidate && <div className="tutor-remove-confirm"><div className="tutor-remove-confirm__student"><Avatar>{removeCandidate.student_id.slice(0, 2).toUpperCase()}</Avatar><div><strong>Student · {removeCandidate.student_id.slice(0, 8)}</strong><span>{details?.title} · {details?.class_code}</span></div></div><p>Removing this active student sets the membership to INACTIVE, revokes class content, and releases their seat. The membership record stays.</p><div className="tutor-remove-confirm__records"><strong>Learning records are retained</strong><span>Completion history, submissions and grades are kept. The student account is not deleted.</span></div></div>}
+          {removeCandidate && <div className="tutor-remove-confirm"><div className="tutor-remove-confirm__student"><Avatar>{memberInitials(removeCandidate)}</Avatar><div><strong>{memberLabel(removeCandidate)}</strong><span>{details?.title} · {details?.class_code}</span></div></div><p>Removing this active student sets the membership to INACTIVE, revokes class content, and releases their seat. The membership record stays.</p><div className="tutor-remove-confirm__records"><strong>Learning records are retained</strong><span>Completion history, submissions and grades are kept. The student account is not deleted.</span></div></div>}
         </Modal>
       </main>
     </TutorWorkspaceLayout>
   );
 }
 
+function memberLabel(member: TutorMember): string {
+  const name = member.full_name?.trim();
+  const email = member.email?.trim();
+  if (name && email) return `${name} · ${email}`;
+  if (name) return name;
+  if (email) return email;
+  return member.student_id;
+}
+
+function memberInitials(member: TutorMember): string {
+  const source = member.full_name?.trim() || member.email?.trim() || member.student_id;
+  return source.slice(0, 2).toUpperCase();
+}
+
 function MemberTable({ members, busyMember, archived, onRemove }: { members: TutorMemberPage["items"]; busyMember?: string; archived: boolean; onRemove: (member: TutorMember) => void }) {
   return <div style={{ overflowX: "auto" }}><table className="tutor-table"><thead><tr><th>Student</th><th>Membership</th><th>Actions</th></tr></thead><tbody>
-    {members.map((member) => <tr key={member.class_member_id}><td><Avatar size={30}>{member.student_id.slice(0, 2).toUpperCase()}</Avatar> <span title={member.student_id}>Student · {member.student_id.slice(0, 8)}</span></td><td><Tag color="green">{member.status}</Tag></td><td><div className="tutor-member-actions"><Button danger disabled={archived || (Boolean(busyMember) && busyMember !== member.class_member_id)} loading={busyMember === member.class_member_id} onClick={() => onRemove(member)}>Remove</Button></div></td></tr>)}
+    {members.map((member) => <tr key={member.class_member_id}><td><Avatar size={30}>{memberInitials(member)}</Avatar> <span title={member.student_id}>{memberLabel(member)}</span></td><td><Tag color="green">{member.status}</Tag></td><td><div className="tutor-member-actions"><Button danger disabled={archived || (Boolean(busyMember) && busyMember !== member.class_member_id)} loading={busyMember === member.class_member_id} onClick={() => onRemove(member)}>Remove</Button></div></td></tr>)}
   </tbody></table></div>;
 }
 
@@ -252,7 +256,7 @@ function PendingTable({ members, busyMember, archived, canApprove, onAction }: {
     {members.map((member) => {
       const locked = archived || (Boolean(busyMember) && busyMember !== member.class_member_id);
       const approveReason = archived ? "Archived classes do not accept membership changes" : canApprove ? undefined : "No seats left in this class";
-      return <tr key={member.class_member_id}><td title={member.student_id}>Student · {member.student_id.slice(0, 8)}</td><td>{member.requested_at ? new Date(member.requested_at).toLocaleString() : "—"}</td><td><div className="tutor-member-actions"><Tooltip title={approveReason}><Button type="primary" disabled={!canApprove || locked} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "approve")}>Approve</Button></Tooltip><Button disabled={locked} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "reject")}>Reject</Button></div></td></tr>;
+      return <tr key={member.class_member_id}><td title={member.student_id}>{memberLabel(member)}</td><td>{member.requested_at ? new Date(member.requested_at).toLocaleString() : "—"}</td><td><div className="tutor-member-actions"><Tooltip title={approveReason}><Button type="primary" disabled={!canApprove || locked} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "approve")}>Approve</Button></Tooltip><Button disabled={locked} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "reject")}>Reject</Button></div></td></tr>;
     })}
   </tbody></table></div>;
 }

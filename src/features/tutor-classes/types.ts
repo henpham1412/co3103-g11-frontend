@@ -27,6 +27,10 @@ export interface TutorMember {
   class_member_id: string;
   class_id: string;
   student_id: string;
+  // Absent on the current ClassMemberResponse. When LMS adds them, use the same
+  // names as the class-detail tutor object and lms_user_access: full_name, email.
+  full_name?: string | null;
+  email?: string | null;
   status: MembershipStatus;
   requested_at: string | null;
   joined_at: string | null;

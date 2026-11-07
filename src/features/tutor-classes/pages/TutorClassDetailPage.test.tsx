@@ -117,28 +117,37 @@ describe('FE-4 tutor class detail', () => {
     await waitFor(() => expect(tutorApi.removeTutorMember).toHaveBeenCalledWith('class-123', 'member-active-1'))
   })
 
-  it('sends the applied roster search and ordering to the members API', async () => {
+  it('does not send a roster query and orders with the sort parameter', async () => {
     renderPage()
-    await screen.findByText('Programming Foundations')
-
-    fireEvent.change(screen.getByPlaceholderText('Search by name or email'), { target: { value: 'student-11' } })
-    fireEvent.keyDown(screen.getByPlaceholderText('Search by name or email'), { key: 'Enter', code: 'Enter' })
+    expect(await screen.findByText(/does not filter by name or email/)).toBeInTheDocument()
+    expect(screen.getByText('20210999-olivia')).toBeInTheDocument()
 
     await waitFor(() => expect(tutorApi.getTutorClassMembers).toHaveBeenCalledWith(
       'class-123',
-      expect.objectContaining({ q: 'student-11', sort: 'requested_at,desc' }),
+      expect.objectContaining({ sort: 'requested_at,desc' }),
       expect.anything(),
     ))
+    expect(tutorApi.getTutorClassMembers.mock.calls.every((call) => call[1].q === undefined)).toBe(true)
 
     fireEvent.mouseDown(screen.getByRole('combobox'))
     fireEvent.click(await screen.findByText('Joined, oldest first'))
-    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
 
     await waitFor(() => expect(tutorApi.getTutorClassMembers).toHaveBeenCalledWith(
       'class-123',
-      expect.objectContaining({ q: 'student-11', sort: 'joined_at,asc' }),
+      expect.objectContaining({ sort: 'joined_at,asc' }),
       expect.anything(),
     ))
+  })
+
+  it('shows the agreed name and email fields when the roster includes them', async () => {
+    rosterFor(
+      [{ ...activeMember, full_name: 'Olivia Nguyen', email: 'olivia@example.com' }],
+      [pendingMember],
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('Olivia Nguyen · olivia@example.com')).toBeInTheDocument()
   })
   it('hides every management action when the LMS refuses the class for this account', async () => {
     classApi.getClassDetails.mockRejectedValue(apiFailure(403, 'FORBIDDEN'))
