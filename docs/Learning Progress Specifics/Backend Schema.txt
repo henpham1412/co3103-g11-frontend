@@ -1,0 +1,25 @@
+CREATE TABLE completion_mark (
+    mark_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    class_member_id UUID NOT NULL REFERENCES class_member(class_member_id),
+    lesson_id UUID NOT NULL REFERENCES lesson(lesson_id) ON DELETE CASCADE,
+    marked_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_completion_mark_member_lesson UNIQUE (class_member_id, lesson_id)
+);
+
+CREATE INDEX ix_completion_mark_class_member
+    ON completion_mark(class_member_id);
+
+CREATE TABLE last_visit (
+    class_member_id UUID PRIMARY KEY REFERENCES class_member(class_member_id),
+    lesson_id UUID NOT NULL REFERENCES lesson(lesson_id) ON DELETE CASCADE,
+    visited_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX ix_last_visit_lesson
+    ON last_visit(lesson_id);
+
+ALTER TABLE completion_mark
+    DROP CONSTRAINT completion_mark_lesson_id_fkey,
+    ADD CONSTRAINT fk_completion_mark_lesson
+        FOREIGN KEY (lesson_id) REFERENCES lesson(lesson_id);
+
