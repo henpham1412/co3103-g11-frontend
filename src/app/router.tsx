@@ -1,5 +1,5 @@
 ﻿import { Button } from "antd";
-import { createBrowserRouter } from "react-router-dom";
+import { Navigate, createBrowserRouter } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
@@ -17,6 +17,8 @@ import TutorQuizPage from "../features/tutor-classes/pages/TutorQuizPage";
 import TutorDashboardPage from "../features/tutor-classes/pages/TutorDashboardPage";
 import App from "./App";
 import NotFoundPage from "./NotFoundPage";
+import TutorWorkspaceSectionPage from "./TutorWorkspaceSectionPage";
+import WorkspaceSectionPage from "./WorkspaceSectionPage";
 
 const authFallback = (
   <AuthLayout>
@@ -77,10 +79,7 @@ export const router = createBrowserRouter([
           },
         ],
       },
-      {
-        path: "*",
-        element: <NotFoundPage />,
-      },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);
