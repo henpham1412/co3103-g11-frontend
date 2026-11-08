@@ -95,6 +95,14 @@ The confirmed UI shape is:
 - Confirmed choices: expose both contextual class-detail progress and a dedicated
   student progress route; expand tutor member progress inline; wire real APIs only
   (`VITE_DEMO_MODE` does not gain progress behavior in this scope).
+- Backend progress endpoints are implemented by contract, but hosting servers are
+  unavailable during frontend work. Wire against the documented contracts and validate
+  with MSW/unit/page tests rather than live integration checks.
+- Treat the progress response as authoritative for progress metrics, while allowing
+  the existing outline to provide display-only structural fallback where the progress
+  response omits non-progress metadata.
+- For a resume target returned as a Quiz attempt ID, resolve the attempt to its activity
+  before using the existing quiz route; do not guess an activity ID from an attempt ID.
 - The current lesson page explicitly says progress APIs are unavailable; that notice
   must be replaced only after the new API surface is wired.
 - The current class types do not carry progress fields, so progress responses should
