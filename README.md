@@ -355,7 +355,7 @@ Refer to the approved documents and Figma designs before implementing new featur
 
 ## Development Notes
 
-- Do not commit `node_modules/`, `dist/`, or local environment files.
+- Do not commit `node_modules/`, `dist/`, or your own environment files (`.env`, `.env.local`).
 - Keep `package-lock.json` committed so team members can install the same dependency versions.
 - Implement features incrementally and run linting and production builds before submitting a Pull Request.
 - Follow the repository's branch protection and Pull Request review workflow.
