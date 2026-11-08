@@ -25,6 +25,23 @@ export interface QuizSettings {
   opening_time: string | null;
   deadline: string;
   required_score: number | null;
+  title?: string;
+  description?: string | null;
+  attempts_used?: number;
+  current_score?: number | null;
+  current_attempt?: QuizAttempt | null;
+  attempts?: QuizAttemptSummary[];
+}
+
+export interface QuizAttemptSummary {
+  attempt_id: string;
+  attempt_number: number;
+  status: QuizAttemptStatus;
+  score: number | null;
+  submitted_at: string | null;
+  started_at: string;
+  auto_submitted: boolean;
+  passed: boolean | null;
 }
 
 export interface QuizAttempt {

@@ -5,7 +5,7 @@ import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { PublicOnlyRoute } from "@/features/auth/components/PublicOnlyRoute";
 
-import QuizActivityPage from "../features/classes/pages/QuizActivityPage";
+import ClassActivityPage from "../features/classes/pages/ClassActivityPage";
 import AssessmentHistoryPage from "../features/classes/pages/AssessmentHistoryPage";
 import ClassCatalogPage from "../features/classes/pages/ClassCatalogPage";
 import ClassDetailPage from "../features/classes/pages/ClassDetailPage";
@@ -49,7 +49,7 @@ export const router = createBrowserRouter([
           { path: "/classes/:classId/lessons/:lessonId", element: <StudentLessonPage /> },
           {
             path: "/classes/:classId/lessons/:lessonId/activities/:activityId",
-            element: <QuizActivityPage />,
+            element: <ClassActivityPage />,
           },
           { path: "/assessment-history", element: <AssessmentHistoryPage /> },
           { path: "/dashboard", element: <WorkspaceSectionPage /> },

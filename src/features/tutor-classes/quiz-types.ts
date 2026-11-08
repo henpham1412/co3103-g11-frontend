@@ -1,4 +1,11 @@
-import type { QuizQuestionType, QuizOption } from "../../features/classes/quiz-types";
+import type { QuizQuestionType } from "../../features/classes/quiz-types";
+
+export interface TutorOption {
+  option_id: string;
+  content: string;
+  is_correct: boolean;
+  order_index: number;
+}
 
 export interface TutorQuestion {
   question_id: string;
@@ -7,7 +14,7 @@ export interface TutorQuestion {
   points_awarded: number;
   points_deducted: number;
   order_index: number;
-  options: QuizOption[];
+  options: TutorOption[];
 }
 
 export interface TutorQuizDetails {
@@ -23,6 +30,8 @@ export interface TutorQuizDetails {
   deadline: string;
   required_score: number | null;
   questions: TutorQuestion[];
+  sequence_order?: number;
+  attempts_exist?: boolean;
 }
 
 export interface TutorAttempt {
