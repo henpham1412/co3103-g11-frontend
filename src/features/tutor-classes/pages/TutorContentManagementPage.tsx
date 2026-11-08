@@ -358,10 +358,18 @@ export default function TutorContentManagementPage() {
                           <Popconfirm title="Delete this material?" onConfirm={() => remove("material", material.material_id)}><Button type="text" danger icon={<DeleteOutlined />} disabled={Boolean(busy)} aria-label={`Delete ${material.title}`} /></Popconfirm>
                         </div>)}
                         {(lesson.activities ?? []).map((activity) => (
-                          <Link key={activity.activity_id} to={`/classes/${classId}/lessons/${lesson.lesson_id}/activities/${activity.activity_id}`}>
-                            {activity.activity_type === "QUIZ" ? "Open quiz" : "Open assignment"} · {activity.title}
-                          </Link>
+                          <span key={activity.activity_id}>
+                            <Link to={`/classes/${classId}/lessons/${lesson.lesson_id}/activities/${activity.activity_id}`}>
+                              {activity.activity_type === "QUIZ" ? "Open quiz" : "Open assignment"} · {activity.title}
+                            </Link>
+                            {activity.activity_type === "QUIZ" && (
+                              <Link style={{ marginLeft: 12 }} to={`/tutor/classes/${classId}/content/quiz/${activity.activity_id}`}>Edit quiz</Link>
+                            )}
+                          </span>
                         ))}
+                        <Link to={`/tutor/classes/${classId}/content/quiz/new?lessonId=${lesson.lesson_id}`}>
+                          <Button className="tutor-add-material" type="link" icon={<PlusOutlined />} disabled={Boolean(busy)}>Add Quiz</Button>
+                        </Link>
                         <Button className="tutor-add-material" type="link" icon={<PlusOutlined />} disabled={Boolean(busy)} onClick={() => openEditor({ kind: "material", lesson })}>Add Material</Button>
                       </article>
                     ))}
