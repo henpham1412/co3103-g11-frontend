@@ -13,6 +13,7 @@ import StudentLessonPage from "../features/classes/pages/StudentLessonPage";
 import TutorClassDetailPage from "../features/tutor-classes/pages/TutorClassDetailPage";
 import TutorClassManagementPage from "../features/tutor-classes/pages/TutorClassManagementPage";
 import TutorContentManagementPage from "../features/tutor-classes/pages/TutorContentManagementPage";
+import TutorQuizPage from "../features/tutor-classes/pages/TutorQuizPage";
 import TutorDashboardPage from "../features/tutor-classes/pages/TutorDashboardPage";
 import App from "./App";
 import NotFoundPage from "./NotFoundPage";
@@ -58,6 +59,8 @@ export const router = createBrowserRouter([
           { path: "/tutor/classes", element: <TutorClassManagementPage /> },
           { path: "/tutor/classes/:classId", element: <TutorClassDetailPage /> },
           { path: "/tutor/classes/:classId/content", element: <TutorContentManagementPage /> },
+          { path: "/tutor/classes/:classId/content/quiz/new", element: <TutorQuizPage /> },
+          { path: "/tutor/classes/:classId/content/quiz/:activityId", element: <TutorQuizPage /> },
           { path: "/tutor/discussion", element: <TutorWorkspaceSectionPage /> },
         ],
       },
