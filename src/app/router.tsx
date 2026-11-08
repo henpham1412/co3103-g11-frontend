@@ -5,7 +5,8 @@ import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { PublicOnlyRoute } from "@/features/auth/components/PublicOnlyRoute";
 
-import ClassActivityPlaceholderPage from "../features/classes/pages/ClassActivityPlaceholderPage";
+import QuizActivityPage from "../features/classes/pages/QuizActivityPage";
+import AssessmentHistoryPage from "../features/classes/pages/AssessmentHistoryPage";
 import ClassCatalogPage from "../features/classes/pages/ClassCatalogPage";
 import ClassDetailPage from "../features/classes/pages/ClassDetailPage";
 import StudentLessonPage from "../features/classes/pages/StudentLessonPage";
@@ -60,8 +61,9 @@ export const router = createBrowserRouter([
           { path: "/classes/:classId/lessons/:lessonId", element: <StudentLessonPage /> },
           {
             path: "/classes/:classId/lessons/:lessonId/activities/:activityId",
-            element: <ClassActivityPlaceholderPage />,
+            element: <QuizActivityPage />,
           },
+          { path: "/assessment-history", element: <AssessmentHistoryPage /> },
           { path: "/dashboard", element: <WorkspaceSectionPage /> },
           { path: "/discussion", element: <WorkspaceSectionPage /> },
           { path: "/tutor", element: <Navigate to="/tutor/dashboard" replace /> },
