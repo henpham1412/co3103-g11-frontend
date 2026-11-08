@@ -9,6 +9,7 @@ import ClassActivityPage from "../features/classes/pages/ClassActivityPage";
 import AssessmentHistoryPage from "../features/classes/pages/AssessmentHistoryPage";
 import ClassCatalogPage from "../features/classes/pages/ClassCatalogPage";
 import ClassDetailPage from "../features/classes/pages/ClassDetailPage";
+import ClassProgressPage from "../features/classes/pages/ClassProgressPage";
 import StudentLessonPage from "../features/classes/pages/StudentLessonPage";
 import TutorClassDetailPage from "../features/tutor-classes/pages/TutorClassDetailPage";
 import TutorClassManagementPage from "../features/tutor-classes/pages/TutorClassManagementPage";
@@ -59,6 +60,7 @@ export const router = createBrowserRouter([
           },
           { path: "/classes", element: <ClassCatalogPage /> },
           { path: "/classes/:classId", element: <ClassDetailPage /> },
+          { path: "/classes/:classId/progress", element: <ClassProgressPage /> },
           { path: "/classes/:classId/lessons/:lessonId", element: <StudentLessonPage /> },
           {
             path: "/classes/:classId/lessons/:lessonId/activities/:activityId",

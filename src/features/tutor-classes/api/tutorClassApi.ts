@@ -10,6 +10,8 @@ import type {
   TutorClass,
   TutorClassPage,
   TutorMemberPage,
+  TutorMemberProgressResponse,
+  TutorProgressResponse,
 } from "../types";
 import {
   createDemoChapter,
@@ -99,6 +101,19 @@ export async function removeTutorMember(classId: string, memberId: string) {
 export async function getTutorOutline(classId: string, signal?: AbortSignal) {
   if (import.meta.env.VITE_DEMO_MODE === "true") return getDemoTutorOutline(classId);
   const response = await lmsClient.get<TutorOutline>(`/classes/${classId}/outline`, { signal });
+  return response.data;
+}
+
+export async function getTutorClassProgress(classId: string, signal?: AbortSignal) {
+  const response = await lmsClient.get<TutorProgressResponse>(`/tutor/classes/${classId}/progress`, { signal });
+  return response.data;
+}
+
+export async function getTutorMemberProgress(classId: string, memberId: string, signal?: AbortSignal) {
+  const response = await lmsClient.get<TutorMemberProgressResponse>(
+    `/tutor/classes/${classId}/members/${memberId}/progress`,
+    { signal },
+  );
   return response.data;
 }
 

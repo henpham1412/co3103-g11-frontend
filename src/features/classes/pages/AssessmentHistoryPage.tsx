@@ -12,7 +12,7 @@ export default function AssessmentHistoryPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    getAssessmentHistory(controller.signal)
+    getAssessmentHistory({}, controller.signal)
       .then((response) => setItems(response.items))
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(normalizeApiError(cause).message);

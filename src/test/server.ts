@@ -9,6 +9,15 @@ export const identityApiUrl = (path: string) =>
   `${centralIdentityClient.defaults.baseURL?.replace(/\/$/, '')}${path}`
 
 export const handlers = [
+  http.get('http://localhost:8081/api/v1/classes/:classId/progress', ({ params }) => HttpResponse.json({
+    class_id: params.classId,
+    completed_lessons: 0,
+    eligible_lessons: 0,
+    progress_percentage: 0,
+    status: 'IN_PROGRESS',
+    chapters: [],
+  })),
+  http.put('http://localhost:8081/api/v1/classes/:classId/last-visit', () => new HttpResponse(null, { status: 204 })),
   http.patch(identityApiUrl('/users/me'), () => HttpResponse.json(wireProfileAcknowledgment)),
   http.post(identityApiUrl('/auth/forgot-password'), () => HttpResponse.json(wireForgotAcknowledgment)),
   http.post(identityApiUrl('/auth/reset-password'), () => HttpResponse.json(wireResetAcknowledgment)),

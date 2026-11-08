@@ -14,6 +14,7 @@ import {
 } from "../api/classApi";
 import type { ClassCatalogItem, ClassOutlineLesson, ClassOutlineMaterial, ClassOutlineResponse } from "../types";
 import { getLessonNavigation, getMaterialDisplay } from "../student-lesson-model";
+import { getClassProgress, markLessonComplete, recordLastVisit, unmarkLessonComplete } from "../api/progressApi";
 import "../student-lesson.css";
 
 interface StudentLessonPageData {
@@ -30,6 +31,9 @@ export default function StudentLessonPage() {
   const { classId = "", lessonId = "" } = useParams();
   const requestKey = `${classId}:${lessonId}`;
   const [result, setResult] = useState<StudentLessonPageData>();
+  const [completion, setCompletion] = useState<boolean>();
+  const [completionBusy, setCompletionBusy] = useState(false);
+  const [completionError, setCompletionError] = useState<string>();
   const loading = result?.requestKey !== requestKey;
   const page = loading ? undefined : result;
   const navigation = getLessonNavigation(page?.outline, lessonId);
@@ -46,6 +50,11 @@ export default function StudentLessonPage() {
       .then(([classItem, outline, lesson, materials]) => {
         if (!controller.signal.aborted) {
           setResult({ requestKey, classItem, outline, lesson, materials });
+          void recordLastVisit(classId, lessonId);
+          void getClassProgress(classId, controller.signal).then((progress) => {
+            const item = progress.chapters.flatMap((chapter) => chapter.lessons).find((candidate) => candidate.lesson_id === lessonId);
+            if (!controller.signal.aborted) setCompletion(item?.completed ?? false);
+          }).catch(() => undefined);
         }
       })
       .catch((cause: unknown) => {
@@ -55,6 +64,31 @@ export default function StudentLessonPage() {
       });
     return () => controller.abort();
   }, [classId, lessonId, requestKey]);
+
+  async function toggleCompletion() {
+    if (completion === undefined || completionBusy) return;
+    setCompletionBusy(true);
+    setCompletionError(undefined);
+    try {
+      if (completion) await unmarkLessonComplete(classId, lessonId);
+      else await markLessonComplete(classId, lessonId);
+      const updatedCompletion = !completion;
+      setCompletion(updatedCompletion);
+      try {
+        const progress = await getClassProgress(classId);
+        const item = progress.chapters.flatMap((chapter) => chapter.lessons).find((candidate) => candidate.lesson_id === lessonId);
+        setCompletion(item?.completed ?? updatedCompletion);
+      } catch (cause) {
+        const failure = normalizeApiError(cause);
+        setCompletionError(`Completion was saved, but progress could not be refreshed: ${failure.message}`);
+      }
+    } catch (cause) {
+      const failure = normalizeApiError(cause);
+      setCompletionError(failure.message);
+    } finally {
+      setCompletionBusy(false);
+    }
+  }
 
   let content;
   if (loading) {
@@ -135,13 +169,14 @@ export default function StudentLessonPage() {
           )}
         </section>
 
-        <Alert
-          className="student-lesson__progress-note"
-          type="info"
-          showIcon
-          title="Opening a lesson does not mark it complete."
-          description="Learning progress updates are not exposed by the current LMS APIs."
-        />
+        <div className="student-lesson__progress-note">
+          {completionError && <Alert type="warning" showIcon title="Could not update lesson completion" description={completionError} />}
+          <Button type={completion ? "default" : "primary"} loading={completionBusy} disabled={completion === undefined} onClick={() => void toggleCompletion()}>
+            {completion ? "Mark as incomplete" : "Mark lesson as complete"}
+          </Button>
+          <Typography.Text type="secondary">Opening a lesson does not mark it complete.</Typography.Text>
+          <Typography.Text type="secondary">It records your last visit.</Typography.Text>
+        </div>
 
         <nav className="student-lesson__lesson-nav" aria-label="Lesson navigation">
           {navigation.previous ? (

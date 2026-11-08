@@ -47,6 +47,8 @@ export interface QuizAttemptSummary {
 export interface QuizAttempt {
   attempt_id: string;
   quiz_id: string;
+  activity_id?: string;
+  lesson_id?: string;
   attempt_number: number;
   status: QuizAttemptStatus;
   started_at: string;
@@ -72,15 +74,20 @@ export interface QuizSubmitResult {
 
 export interface AssessmentHistoryItem {
   attempt_id: string;
-  quiz_id: string;
-  activity_id?: string;
+  class_id: string;
+  quiz_id?: string;
+  activity_id: string;
   activity_title: string;
-  class_title: string;
   attempt_number: number;
+  type: "QUIZ" | "ASSIGNMENT";
+  status: "IN_PROGRESS" | "SUBMITTED";
+  started_at: string;
   score: number | null;
   submitted_at: string | null;
-  auto_submitted: boolean;
-  passed: boolean | null;
+  feedback: string | null;
+  class_title?: string;
+  auto_submitted?: boolean;
+  passed?: boolean | null;
 }
 
 export interface AssessmentHistoryResponse {

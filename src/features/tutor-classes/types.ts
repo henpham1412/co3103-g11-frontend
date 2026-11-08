@@ -79,6 +79,45 @@ export interface TutorLesson {
   activities?: ClassOutlineActivity[];
 }
 
+export interface TutorProgressMember {
+  class_member_id: string;
+  student_id: string;
+  student_name?: string;
+  completed_lessons: number;
+  eligible_lessons: number;
+  progress_percentage: number;
+  status: "IN_PROGRESS" | "COMPLETED";
+}
+
+export interface TutorProgressResponse {
+  class_id: string;
+  members: TutorProgressMember[];
+  page?: number;
+  size?: number;
+  total_items?: number;
+  total_pages?: number;
+}
+
+export interface TutorMemberProgressResponse {
+  class_member_id: string;
+  student_id: string;
+  student_name?: string;
+  completed_lessons: number;
+  eligible_lessons: number;
+  progress_percentage: number;
+  status: "IN_PROGRESS" | "COMPLETED";
+  chapters: import("../classes/types").ProgressChapter[];
+  mastery?: Array<{ skill_topic: string; mastery: number | null }>;
+  assessment_outcomes?: Array<{
+    activity_id: string;
+    activity_title: string;
+    activity_type: "QUIZ" | "ASSIGNMENT";
+    status: string;
+    score?: number | null;
+    feedback?: string | null;
+  }>;
+}
+
 export interface TutorMaterial {
   material_id: string;
   lesson_id?: string;

@@ -29,6 +29,7 @@ import {
 } from "../api/classApi";
 import type { ClassCatalogItem, ClassOutlineResponse, MembershipStatus } from "../types";
 import "../class-detail.css";
+import ClassProgressPanel from "../components/ClassProgressPanel";
 
 interface ClassDetailResult {
   requestKey: string;
@@ -360,6 +361,13 @@ export default function ClassDetailPage() {
               className="class-detail__tabs"
               items={[
                 { key: "syllabus", label: "Syllabus", children: syllabusContent },
+              {
+                key: "progress",
+                label: "Learning progress",
+                children: membershipStatus === "ACTIVE"
+                  ? <ClassProgressPanel classId={classId} />
+                  : <Alert type="info" showIcon title="Join this class to view learning progress" />,
+              },
                 {
                   key: "information",
                   label: "Class information",

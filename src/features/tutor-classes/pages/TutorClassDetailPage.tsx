@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, App, Avatar, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Spin, Tag, Tooltip, Typography, Upload } from "antd";
+import { Alert, App, Avatar, Button, Card, Collapse, Empty, Form, Input, InputNumber, Modal, Pagination, Progress, Select, Spin, Tag, Tooltip, Typography, Upload } from "antd";
 import { FolderOpenOutlined } from "@ant-design/icons";
 import { Link, useParams } from "react-router-dom";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
 import { getClassDetails } from "../../classes/api/classApi";
 import { normalizeApiError } from "@/api/apiError";
 import type { ClassCatalogItem } from "../../classes/types";
-import { approveTutorMember, getTutorClassMembers, getTutorOutline, rejectTutorMember, removeTutorMember, updateTutorClass, uploadClassThumbnail } from "../api/tutorClassApi";
-import type { TutorMember, TutorMemberPage, TutorOutline } from "../types";
+import { approveTutorMember, getTutorClassMembers, getTutorClassProgress, getTutorMemberProgress, getTutorOutline, rejectTutorMember, removeTutorMember, updateTutorClass, uploadClassThumbnail } from "../api/tutorClassApi";
+import type { TutorMember, TutorMemberPage, TutorOutline, TutorProgressResponse, TutorMemberProgressResponse } from "../types";
 import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
 
 const PAGE_SIZE = 20;
@@ -30,7 +30,12 @@ export default function TutorClassDetailPage() {
   const [pendingMembers, setPendingMembers] = useState<TutorMemberPage>();
   const [removeCandidate, setRemoveCandidate] = useState<TutorMember>();
   const [outline, setOutline] = useState<TutorOutline>();
-  const [activeTab, setActiveTab] = useState<"syllabus" | "members">("syllabus");
+  const [activeTab, setActiveTab] = useState<"syllabus" | "members" | "progress">("syllabus");
+  const [progress, setProgress] = useState<TutorProgressResponse>();
+  const [progressError, setProgressError] = useState<string>();
+  const [selectedProgressMember, setSelectedProgressMember] = useState<string>();
+  const [memberProgress, setMemberProgress] = useState<TutorMemberProgressResponse>();
+  const [memberProgressError, setMemberProgressError] = useState<string>();
   const [activePage, setActivePage] = useState(1);
   const [pendingPage, setPendingPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -59,6 +64,7 @@ export default function TutorClassDetailPage() {
     ])
       .then(([classDetails, active, pending, classOutline]) => {
         setDetails(classDetails);
+        if (classDetails.status === "ARCHIVED") setActiveTab("members");
         setActiveMembers(active);
         setPendingMembers(pending);
         setOutline(classOutline);
@@ -73,6 +79,24 @@ export default function TutorClassDetailPage() {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [classId, activePage, pendingPage, searchApplied, sort, reload]);
+
+  useEffect(() => {
+    if (activeTab !== "progress") return;
+    const controller = new AbortController();
+    getTutorClassProgress(classId, controller.signal)
+      .then((value) => { setProgress(value); setProgressError(undefined); })
+      .catch((cause: unknown) => { if (!controller.signal.aborted) setProgressError(tutorErrorText(cause)); });
+    return () => controller.abort();
+  }, [activeTab, classId, reload]);
+
+  useEffect(() => {
+    if (!selectedProgressMember) return;
+    const controller = new AbortController();
+    getTutorMemberProgress(classId, selectedProgressMember, controller.signal)
+      .then((value) => { setMemberProgress(value); setMemberProgressError(undefined); })
+      .catch((cause: unknown) => { if (!controller.signal.aborted) setMemberProgressError(tutorErrorText(cause)); });
+    return () => controller.abort();
+  }, [classId, selectedProgressMember]);
 
   function runRosterSearch() {
     setActivePage(1);
@@ -183,16 +207,27 @@ export default function TutorClassDetailPage() {
             </div>
             <div className="tutor-class-detail-meta"><span>{details.tutor.full_name} · Tutor</span><span>{details.active_member_count}/{details.max_capacity ?? "∞"} Seats</span><Tag color="blue">{details.enrollment_policy}</Tag></div>
           </section>
+          {archived && <Alert className="tutor-page__notice" type="info" showIcon message="This class is archived" description="Approve, reject and remove stay closed. Set the lifecycle back to Active before changing membership." />}
 
-          <div className="tutor-page__tabs" role="tablist"><button className={activeTab === "syllabus" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "syllabus"} onClick={() => setActiveTab("syllabus")}>Course Syllabus</button><button className={activeTab === "members" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "members"} onClick={() => setActiveTab("members")}>Member <Tag>{activeMembers?.total_items ?? 0}</Tag></button></div>
+          <div className="tutor-page__tabs" role="tablist"><button className={activeTab === "syllabus" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "syllabus"} onClick={() => setActiveTab("syllabus")}>Course Syllabus</button><button className={activeTab === "members" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "members"} onClick={() => setActiveTab("members")}>Member <Tag>{activeMembers?.total_items ?? 0}</Tag></button><button className={activeTab === "progress" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "progress"} onClick={() => setActiveTab("progress")}>Progress</button></div>
           {activeTab === "syllabus" ? <section className="tutor-panel tutor-syllabus">
             <header className="tutor-syllabus__heading"><div><h2>Course Syllabus</h2><span>{outline?.chapters.length ?? 0} chapters · {outline?.chapters.reduce((sum, chapter) => sum + chapter.lessons.length, 0) ?? 0} lessons</span></div><Link to={`/tutor/classes/${classId}/content`}><Button icon={<FolderOpenOutlined />}>Manage content</Button></Link></header>
             <Alert type="info" showIcon title="Tutor preview includes hidden content. Students can only access published content inside published chapters." />
             {outline?.chapters.length ? <div className="tutor-syllabus__chapters">{outline.chapters.map((chapter, index) => <article className="tutor-syllabus__chapter" key={chapter.chapter_id}><header><strong>Chapter {index + 1} · {chapter.title}</strong><Tag color={chapter.status === "PUBLISHED" ? "green" : "default"}>{chapter.status}</Tag></header>{chapter.lessons.map((lesson, lessonIndex) => <div className="tutor-syllabus__lesson" key={lesson.lesson_id}><span>{index + 1}.{lessonIndex + 1} · {lesson.title}</span><span>{lesson.estimated_duration ?? "—"} mins · {lesson.status}</span></div>)}</article>)}</div> : <Empty description="No syllabus content yet" />}
+          </section> : activeTab === "progress" ? <section className="tutor-page__section tutor-panel">
+            <div><h2>Learning progress</h2><div className="tutor-panel__sub">Progress is shown for active members only. Former members remain retained by the LMS but are not listed.</div></div>
+            {progressError ? <Alert type="error" showIcon title="Could not load member progress" description={progressError} /> : progress?.members.length ? <TableProgress members={progress.members} selected={selectedProgressMember} onSelect={(memberId) => { setMemberProgress(undefined); setMemberProgressError(undefined); setSelectedProgressMember(memberId); }} /> : <Empty description="No active member progress is available" />}
+            {memberProgressError && <Alert style={{ marginTop: 20 }} type="error" showIcon title="Could not load student progress" description={memberProgressError} />}
+            {memberProgress && <Card style={{ marginTop: 20 }} title={memberProgress.student_name ?? `Student ${memberProgress.student_id}`}>
+              <Progress percent={memberProgress.progress_percentage} />
+              <Typography.Text>{memberProgress.completed_lessons} of {memberProgress.eligible_lessons} lessons complete · {memberProgress.status}</Typography.Text>
+              <Collapse style={{ marginTop: 16 }} items={memberProgress.chapters.map((chapter) => ({ key: chapter.chapter_id, label: chapter.title, children: chapter.lessons.map((lesson) => <div key={lesson.lesson_id}>{lesson.completed ? "✓" : "○"} {lesson.title}</div>) }))} />
+              {memberProgress.assessment_outcomes?.length ? <div style={{ marginTop: 16 }}><Typography.Title level={5}>Assessment outcomes</Typography.Title>{memberProgress.assessment_outcomes.map((outcome) => <div key={outcome.activity_id}>{outcome.activity_title} · {outcome.status}{outcome.score == null ? "" : ` · ${outcome.score}%`}{outcome.feedback ? ` · ${outcome.feedback}` : ""}</div>)}</div> : null}
+              {memberProgress.mastery?.length ? <div style={{ marginTop: 16 }}>{memberProgress.mastery.map((item) => <Tag key={item.skill_topic}>{item.skill_topic}: {item.mastery == null ? "—" : `${item.mastery}%`}</Tag>)}</div> : null}
+            </Card>}
           </section> : <>
           <section className="tutor-page__section tutor-panel">
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">Search matches the student name or email on the server, up to {ROSTER_QUERY_MAX} characters, and applies to both lists. The roster response only includes a student id, so names are not shown. Ordering is also applied by the server.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
-            {archived && <Alert className="tutor-page__notice" type="info" showIcon title="This class is archived" description="Approve, reject and remove stay closed. Set the lifecycle back to Active before changing membership." />}
             <div className="tutor-class-filters">
               <Input.Search allowClear maxLength={ROSTER_QUERY_MAX} placeholder="Search by name or email" value={search} onChange={(event) => setSearch(event.target.value)} onSearch={runRosterSearch} />
               <Select value={sort} onChange={(value) => { setActivePage(1); setPendingPage(1); setSort(value); }} options={ROSTER_SORTS} aria-label="Roster ordering" />
@@ -268,4 +303,22 @@ function PendingTable({ members, busyMember, archived, canApprove, onAction }: {
       return <tr key={member.class_member_id}><td title={member.student_id}>Student · {member.student_id.slice(0, 8)}</td><td>{member.requested_at ? new Date(member.requested_at).toLocaleString() : "—"}</td><td><div className="tutor-member-actions"><Tooltip title={approveReason}><Button type="primary" disabled={!canApprove || locked} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "approve")}>Approve</Button></Tooltip><Button disabled={locked} loading={busyMember === member.class_member_id} onClick={() => onAction(member.class_member_id, "reject")}>Reject</Button></div></td></tr>;
     })}
   </tbody></table></div>;
+}
+
+function TableProgress({ members, selected, onSelect }: {
+  members: NonNullable<TutorProgressResponse["members"]>;
+  selected?: string;
+  onSelect: (memberId: string) => void;
+}) {
+  return <div className="tutor-syllabus__chapters">
+    {members.map((member) => <button
+      type="button"
+      key={member.class_member_id}
+      onClick={() => onSelect(member.class_member_id)}
+      style={{ display: "grid", gridTemplateColumns: "1fr auto", width: "100%", textAlign: "left", padding: 14, border: selected === member.class_member_id ? "2px solid #2563eb" : "1px solid #e5e7eb", background: "white", borderRadius: 6, cursor: "pointer" }}
+    >
+      <span>{member.student_name ?? `Student ${member.student_id}`}<br /><Typography.Text type="secondary">{member.completed_lessons}/{member.eligible_lessons} lessons · {member.status}</Typography.Text></span>
+      <Progress type="circle" size={48} percent={member.progress_percentage} />
+    </button>)}
+  </div>;
 }

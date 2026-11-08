@@ -40,7 +40,13 @@ export async function submitQuizAttempt(attemptId: string) {
   return response.data;
 }
 
-export async function getAssessmentHistory(signal?: AbortSignal) {
-  const response = await lmsClient.get<AssessmentHistoryResponse>("/me/assessment-history", { signal });
+export async function getAssessmentHistory(
+  query: { class_id?: string; type?: "QUIZ" | "ASSIGNMENT"; page?: number; size?: number } = {},
+  signal?: AbortSignal,
+) {
+  const response = await lmsClient.get<AssessmentHistoryResponse>("/me/assessment-history", {
+    params: query,
+    signal,
+  });
   return response.data;
 }
