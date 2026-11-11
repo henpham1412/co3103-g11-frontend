@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AxiosError, type AxiosResponse } from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -40,6 +41,7 @@ const classOutline: ClassOutlineResponse = {
       chapter_id: 'chapter-1',
       title: 'Getting started',
       sequence_order: 0,
+      status: 'PUBLISHED',
       lessons: [
         {
           lesson_id: 'lesson-1',
@@ -59,11 +61,13 @@ const outlineWithActivities: ClassOutlineResponse = {
       chapter_id: 'chapter-1',
       title: 'Getting started',
       sequence_order: 0,
+      status: 'PUBLISHED',
       lessons: [
         {
           lesson_id: 'lesson-1',
           title: 'Your first program',
           sequence_order: 0,
+          status: 'PUBLISHED',
           estimated_duration: 25,
           activities: [
             { activity_id: 'activity-1', title: 'Java basics check', activity_type: 'QUIZ', sequence_order: 0 },
@@ -77,11 +81,13 @@ const outlineWithActivities: ClassOutlineResponse = {
 
 function renderDetails() {
   return render(
-    <MemoryRouter initialEntries={['/classes/class-123']}>
-      <Routes>
-        <Route path="/classes/:classId" element={<ClassDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <App>
+      <MemoryRouter initialEntries={['/classes/class-123']}>
+        <Routes>
+          <Route path="/classes/:classId" element={<ClassDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
 }
 

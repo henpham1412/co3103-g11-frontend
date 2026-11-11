@@ -2,6 +2,8 @@ import { lmsClient } from "../../../api/lmsClient";
 import type {
   ClassCatalogItem,
   ClassCatalogResponse,
+  ClassOutlineLesson,
+  ClassOutlineMaterial,
   ClassOutlineResponse,
   CurrentMembership,
   EnrollmentPolicy,
@@ -75,4 +77,50 @@ export async function getClassOutline(
     { signal },
   );
   return response.data;
+}
+
+export async function getStudentLesson(
+  lessonId: string,
+  signal?: AbortSignal,
+): Promise<ClassOutlineLesson> {
+  const response = await lmsClient.get<ClassOutlineLesson>(`/lessons/${lessonId}`, { signal });
+  return response.data;
+}
+
+export async function getStudentLessonMaterials(
+  lessonId: string,
+  signal?: AbortSignal,
+): Promise<ClassOutlineMaterial[]> {
+  const response = await lmsClient.get<ClassOutlineMaterial[]>(
+    `/lessons/${lessonId}/materials`,
+    { signal },
+  );
+  return response.data;
+}
+
+// Material files are served only from the API origin, so the relative download URL is
+// resolved against the configured base and rejected before it can leave it.
+export async function downloadStudentMaterial(
+  fileUrl: string,
+  signal?: AbortSignal,
+): Promise<{ blob: Blob; filename?: string }> {
+  const baseUrl = lmsClient.defaults.baseURL ?? "";
+  const base = new URL(baseUrl, window.location.href);
+  const file = new URL(fileUrl, base);
+  if (file.origin !== base.origin) {
+    throw new Error("This file URL is outside the LMS API origin.");
+  }
+  const basePath = base.pathname.replace(/\/$/, "");
+  const apiPath = file.pathname.startsWith(`${basePath}/`)
+    ? file.pathname.slice(basePath.length)
+    : file.pathname;
+  if (!apiPath.startsWith("/materials/files/")) {
+    throw new Error("This file URL is outside the LMS material download endpoint.");
+  }
+  const response = await lmsClient.get<Blob>(apiPath, { responseType: "blob", signal });
+  const disposition = response.headers["content-disposition"] as string | undefined;
+  const encodedName = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const quotedName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
+  const filename = encodedName ? decodeURIComponent(encodedName) : quotedName;
+  return { blob: response.data, filename };
 }
