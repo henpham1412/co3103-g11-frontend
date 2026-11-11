@@ -156,12 +156,14 @@ export default function ClassDetailPage() {
       setReadToken((token) => token + 1);
     } catch (error) {
       const code = getErrorCode(error);
-      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE") {
-        // Either code means the server disagrees with this snapshot, so it is re-read.
+      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE" || code === "ENROLLMENT_POLICY_CHANGED") {
+        // These conflicts mean the server disagrees with this snapshot, so it is re-read.
         if (code === "CLASS_FULL") {
           message.error("This class is full.");
-        } else {
+        } else if (code === "INVALID_MEMBERSHIP_STATE") {
           message.warning("Your membership already exists. Refreshing its current status.");
+        } else {
+          message.error(getErrorMessage(error));
         }
         setReadToken((token) => token + 1);
       } else {
@@ -186,6 +188,9 @@ export default function ClassDetailPage() {
       setReadToken((token) => token + 1);
     } catch (error) {
       message.error(getErrorMessage(error));
+      if (getErrorCode(error) === "INVALID_MEMBERSHIP_STATE") {
+        setReadToken((token) => token + 1);
+      }
     } finally {
       setJoining(false);
     }
