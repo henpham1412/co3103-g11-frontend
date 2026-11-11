@@ -9,6 +9,7 @@ const codeMessages: Record<string, string> = {
   CLASS_FULL: "This class has no free seats, so the request cannot be approved.",
   CLASS_ARCHIVED: "Archived classes no longer accept membership changes.",
   INVALID_MEMBERSHIP_STATE: "That request was already handled, so it cannot be approved or rejected again.",
+  CLASS_NOT_FOUND: "This class no longer exists.",
   CLASS_OR_MEMBERSHIP_NOT_FOUND: "This student is no longer in the class roster.",
   ENROLLMENT_POLICY_CHANGED: "The enrollment policy changed. Reload the class before retrying.",
   CAPACITY_BELOW_ACTIVE_MEMBERS: "Capacity cannot be lower than the number of active students.",

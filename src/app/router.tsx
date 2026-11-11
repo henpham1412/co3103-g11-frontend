@@ -1,4 +1,4 @@
-﻿import { Button } from "antd";
+import { Button } from "antd";
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
@@ -15,6 +15,7 @@ import TutorClassManagementPage from "../features/tutor-classes/pages/TutorClass
 import TutorContentManagementPage from "../features/tutor-classes/pages/TutorContentManagementPage";
 import TutorQuizPage from "../features/tutor-classes/pages/TutorQuizPage";
 import TutorDashboardPage from "../features/tutor-classes/pages/TutorDashboardPage";
+import TutorRoute from "../features/tutor-classes/TutorRoute";
 import App from "./App";
 import NotFoundPage from "./NotFoundPage";
 import TutorWorkspaceSectionPage from "./TutorWorkspaceSectionPage";
@@ -56,14 +57,19 @@ export const router = createBrowserRouter([
           { path: "/assessment-history", element: <AssessmentHistoryPage /> },
           { path: "/dashboard", element: <WorkspaceSectionPage /> },
           { path: "/discussion", element: <WorkspaceSectionPage /> },
-          { path: "/tutor", element: <Navigate to="/tutor/dashboard" replace /> },
-          { path: "/tutor/dashboard", element: <TutorDashboardPage /> },
-          { path: "/tutor/classes", element: <TutorClassManagementPage /> },
-          { path: "/tutor/classes/:classId", element: <TutorClassDetailPage /> },
-          { path: "/tutor/classes/:classId/content", element: <TutorContentManagementPage /> },
-          { path: "/tutor/classes/:classId/content/quiz/new", element: <TutorQuizPage /> },
-          { path: "/tutor/classes/:classId/content/quiz/:activityId", element: <TutorQuizPage /> },
-          { path: "/tutor/discussion", element: <TutorWorkspaceSectionPage /> },
+          {
+            element: <TutorRoute />,
+            children: [
+              { path: "/tutor", element: <Navigate to="/tutor/dashboard" replace /> },
+              { path: "/tutor/dashboard", element: <TutorDashboardPage /> },
+              { path: "/tutor/classes", element: <TutorClassManagementPage /> },
+              { path: "/tutor/classes/:classId", element: <TutorClassDetailPage /> },
+              { path: "/tutor/classes/:classId/content", element: <TutorContentManagementPage /> },
+              { path: "/tutor/classes/:classId/content/quiz/new", element: <TutorQuizPage /> },
+              { path: "/tutor/classes/:classId/content/quiz/:activityId", element: <TutorQuizPage /> },
+              { path: "/tutor/discussion", element: <TutorWorkspaceSectionPage /> },
+            ],
+          },
         ],
       },
       {

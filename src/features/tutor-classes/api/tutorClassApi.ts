@@ -11,6 +11,7 @@ import type {
   TutorClassPage,
   TutorMemberPage,
 } from "../types";
+
 export async function getTutorClasses(
   query: { page?: number; size?: number; sort?: string } = {},
   signal?: AbortSignal,
@@ -37,6 +38,7 @@ export async function updateTutorClass(
 
 export interface TutorMemberQuery {
   status?: "PENDING" | "ACTIVE";
+  // The server searches the local user's full name and email.
   q?: string;
   page?: number;
   size?: number;
