@@ -38,7 +38,7 @@ export async function updateTutorClass(
 
 export interface TutorMemberQuery {
   status?: "PENDING" | "ACTIVE";
-  // Reserved for LMS-3 F02. The current members endpoint ignores q, and the UI does not send it.
+  // The server searches the local user's full name and email.
   q?: string;
   page?: number;
   size?: number;

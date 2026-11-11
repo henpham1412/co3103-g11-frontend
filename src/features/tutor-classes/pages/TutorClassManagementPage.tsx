@@ -9,6 +9,7 @@ import { createTutorClass, getTutorClassMembers, getTutorClasses, updateTutorCla
 import { normalizeApiError } from "@/api/apiError";
 import type { CreateTutorClass, TutorClass } from "../types";
 import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
+import { lastValidPage } from "../utils/pagination";
 
 const PAGE_SIZE = 20;
 // GET /tutor/classes has no search or status parameter (DOC-05 §3.1.1). The largest
@@ -102,7 +103,11 @@ export default function TutorClassManagementPage() {
     const matchesQuery = !query || `${item.title} ${item.class_code}`.toLowerCase().includes(query);
     return matchesQuery && (status === "ALL" || item.status === status);
   }), [classes, searchApplied, status]);
-  const visibleClasses = filteredClasses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // All server pages have already been loaded. Recover the local display page
+  // from that authoritative snapshot without fetching the same data twice.
+  const currentPage = lastValidPage(page, Math.ceil(filteredClasses.length / PAGE_SIZE));
+  if (page !== currentPage) setPage(currentPage);
+  const visibleClasses = filteredClasses.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   async function submitCreate() {
     const values = await form.validateFields().catch(() => undefined);
@@ -171,7 +176,7 @@ export default function TutorClassManagementPage() {
                       <td>{pendingCount?.classId === item.class_id ? pendingCount.total : "—"}</td><td><Tag color={item.status === "ACTIVE" ? "green" : "default"}>{item.status}</Tag></td>
                     </tr>)}
                   </tbody></table></div>
-                  <Pagination style={{ marginTop: 16, textAlign: "right" }} current={page} pageSize={PAGE_SIZE} total={filteredClasses.length} showSizeChanger={false} onChange={setPage} />
+                  <Pagination style={{ marginTop: 16, textAlign: "right" }} current={currentPage} pageSize={PAGE_SIZE} total={filteredClasses.length} showSizeChanger={false} onChange={setPage} />
                 </>
               )}
             </section>

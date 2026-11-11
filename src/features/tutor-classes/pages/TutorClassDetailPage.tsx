@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, App, Avatar, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Spin, Tag, Tooltip, Typography, Upload } from "antd";
 import { FolderOpenOutlined } from "@ant-design/icons";
 import { Link, useParams } from "react-router-dom";
@@ -9,6 +9,8 @@ import type { ClassCatalogItem } from "../../classes/types";
 import { approveTutorMember, getTutorClassMembers, getTutorOutline, rejectTutorMember, removeTutorMember, updateTutorClass, uploadClassThumbnail } from "../api/tutorClassApi";
 import type { TutorMember, TutorMemberPage, TutorOutline } from "../types";
 import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
+import { lastValidPage } from "../utils/pagination";
+import type { TutorMemberQuery } from "../api/tutorClassApi";
 
 const PAGE_SIZE = 20;
 const THUMBNAIL_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -21,6 +23,21 @@ const ROSTER_SORTS = [
   { value: "status,asc", label: "Membership status" },
 ];
 
+async function loadRosterPage(classId: string, query: TutorMemberQuery, signal: AbortSignal) {
+  let page = query.page ?? 1;
+  for (;;) {
+    signal.throwIfAborted();
+    const result = await getTutorClassMembers(classId, { ...query, page }, signal);
+    if (!Number.isSafeInteger(result.total_pages) || result.total_pages < 0 || result.page !== page) {
+      throw new Error("The roster returned invalid pagination data. Please try again.");
+    }
+    const validPage = lastValidPage(page, result.total_pages);
+    if (validPage === page) return result;
+    // Only move backwards, so shrinking rosters cannot cause a refetch loop.
+    page = validPage;
+  }
+}
+
 export default function TutorClassDetailPage() {
   const { message } = App.useApp();
   const { classId = "" } = useParams();
@@ -30,8 +47,12 @@ export default function TutorClassDetailPage() {
   const [removeCandidate, setRemoveCandidate] = useState<TutorMember>();
   const [outline, setOutline] = useState<TutorOutline>();
   const [activeTab, setActiveTab] = useState<"syllabus" | "members">("syllabus");
-  const [activePage, setActivePage] = useState(1);
-  const [pendingPage, setPendingPage] = useState(1);
+  // Page navigation starts a read through refresh(). Recovery updates these
+  // targets without starting a second batch of already-completed requests.
+  const activePage = useRef(1);
+  const pendingPage = useRef(1);
+  const [search, setSearch] = useState("");
+  const [searchApplied, setSearchApplied] = useState("");
   const [sort, setSort] = useState("requested_at,desc");
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [thumbnailFile, setThumbnailFile] = useState<File>();
@@ -47,15 +68,17 @@ export default function TutorClassDetailPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    // The current LMS-3 members endpoint ignores q (F02), so it is not sent.
-    const roster = { sort, size: PAGE_SIZE };
+    const roster = { q: searchApplied || undefined, sort, size: PAGE_SIZE };
     Promise.all([
       getClassDetails(classId, controller.signal),
-      getTutorClassMembers(classId, { ...roster, status: "ACTIVE", page: activePage }, controller.signal),
-      getTutorClassMembers(classId, { ...roster, status: "PENDING", page: pendingPage }, controller.signal),
+      loadRosterPage(classId, { ...roster, status: "ACTIVE", page: activePage.current }, controller.signal),
+      loadRosterPage(classId, { ...roster, status: "PENDING", page: pendingPage.current }, controller.signal),
       getTutorOutline(classId, controller.signal),
     ])
       .then(([classDetails, active, pending, classOutline]) => {
+        if (controller.signal.aborted) return;
+        activePage.current = active.page;
+        pendingPage.current = pending.page;
         setDetails(classDetails);
         setActiveMembers(active);
         setPendingMembers(pending);
@@ -70,7 +93,14 @@ export default function TutorClassDetailPage() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [classId, activePage, pendingPage, sort, reload]);
+  }, [classId, searchApplied, sort, reload]);
+
+  function runRosterSearch(value: string) {
+    activePage.current = 1;
+    pendingPage.current = 1;
+    setSearchApplied(value.trim());
+    refresh();
+  }
 
   async function act(memberId: string, action: "approve" | "reject") {
     setBusyMember(memberId);
@@ -183,12 +213,13 @@ export default function TutorClassDetailPage() {
             {outline?.chapters.length ? <div className="tutor-syllabus__chapters">{outline.chapters.map((chapter, index) => <article className="tutor-syllabus__chapter" key={chapter.chapter_id}><header><strong>Chapter {index + 1} · {chapter.title}</strong><Tag color={chapter.status === "PUBLISHED" ? "green" : "default"}>{chapter.status}</Tag></header>{chapter.lessons.map((lesson, lessonIndex) => <div className="tutor-syllabus__lesson" key={lesson.lesson_id}><span>{index + 1}.{lessonIndex + 1} · {lesson.title}</span><span>{lesson.estimated_duration ?? "—"} mins · {lesson.status}</span></div>)}</article>)}</div> : <Empty description="No syllabus content yet" />}
           </section> : <>
           <section className="tutor-page__section tutor-panel">
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">The current members API does not filter by name or email, so no search query is sent. Rows show full_name and email when the response includes those fields; otherwise the full student id is shown. Ordering uses the server sort parameter.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">Search by name or email across both rosters. Student identifiers are shown when names and emails are not included in the response.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
             {archived && <Alert className="tutor-page__notice" type="info" showIcon title="This class is archived" description="Approve, reject and remove stay closed. Set the lifecycle back to Active before changing membership." />}
             <div className="tutor-class-filters">
-              <Select value={sort} onChange={(value) => { setActivePage(1); setPendingPage(1); setSort(value); }} options={ROSTER_SORTS} aria-label="Roster ordering" />
+              <Input.Search allowClear maxLength={100} placeholder="Search by name or email" value={search} onChange={(event) => setSearch(event.target.value)} onSearch={runRosterSearch} />
+              <Select value={sort} onChange={(value) => { activePage.current = 1; pendingPage.current = 1; setSort(value); refresh(); }} options={ROSTER_SORTS} aria-label="Roster ordering" />
             </div>
-            {activeMembers?.items.length ? <><MemberTable members={activeMembers.items} busyMember={busyMember} archived={archived} onRemove={setRemoveCandidate} /><Pagination style={{ marginTop: 16, textAlign: "right" }} current={activePage} pageSize={PAGE_SIZE} total={activeMembers.total_items} showSizeChanger={false} onChange={setActivePage} /></> : <Empty description="No active members" />}
+            {activeMembers?.items.length ? <><MemberTable members={activeMembers.items} busyMember={busyMember} archived={archived} onRemove={setRemoveCandidate} /><Pagination style={{ marginTop: 16, textAlign: "right" }} current={activeMembers.page} pageSize={PAGE_SIZE} total={activeMembers.total_items} showSizeChanger={false} onChange={(page) => { activePage.current = page; refresh(); }} /></> : <Empty description={searchApplied ? "No active members match your search" : "No active members"} />}
           </section>
 
           <section className="tutor-page__section tutor-panel">
@@ -196,8 +227,8 @@ export default function TutorClassDetailPage() {
             {pendingMembers?.items.length ? <>
               {seatsAvailable === 0 && !archived && <Alert className="tutor-page__notice" type="warning" showIcon title="This class is full" description="Approving needs a free seat, so approvals are blocked until capacity increases or a member is removed." />}
               <PendingTable members={pendingMembers.items} busyMember={busyMember} archived={archived} canApprove={!archived && seatsAvailable !== 0} onAction={act} />
-              <Pagination style={{ marginTop: 16, textAlign: "right" }} current={pendingPage} pageSize={PAGE_SIZE} total={pendingMembers.total_items} showSizeChanger={false} onChange={setPendingPage} />
-            </> : <Empty description="No pending requests" />}
+              <Pagination style={{ marginTop: 16, textAlign: "right" }} current={pendingMembers.page} pageSize={PAGE_SIZE} total={pendingMembers.total_items} showSizeChanger={false} onChange={(page) => { pendingPage.current = page; refresh(); }} />
+            </> : <Empty description={searchApplied ? "No pending requests match your search" : "No pending requests"} />}
           </section>
           </>}
         </> : <Empty description="Class not found" />}
