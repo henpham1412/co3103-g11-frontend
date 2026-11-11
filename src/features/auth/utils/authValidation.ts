@@ -1,3 +1,5 @@
+import { isValidUnicodeText } from '@/utils/unicodeText'
+
 export const normalizeEmail = (email: string) => email.trim().toLowerCase()
 export const passwordByteLength = (password: string) => new TextEncoder().encode(password).length
 
@@ -53,7 +55,18 @@ export function validateLoginPassword(value = ''): string | undefined {
   if (passwordByteLength(value) > 72) return 'Password must be at most 72 UTF-8 bytes.'
 }
 
+export function passwordRequirements(password = '') {
+  const validText = isValidUnicodeText(password)
+  return [
+    { label: 'At least 8 characters', met: password.length >= 8 },
+    { label: 'At most 72 bytes', met: validText && password.length > 0 && passwordByteLength(password) <= 72 },
+    { label: 'Contains a non-whitespace character', met: !!password.trim() },
+    { label: 'No invalid characters', met: validText && password.length > 0 },
+  ]
+}
+
 export function validateRegisterPassword(value = ''): string | undefined {
+  if (!isValidUnicodeText(value)) return 'Please remove invalid characters from your password.'
   const error = validateLoginPassword(value)
   if (error) return error
   if (value.length < 8) return 'Password must be at least 8 characters.'

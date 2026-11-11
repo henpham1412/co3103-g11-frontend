@@ -59,6 +59,24 @@ describe('ResetPasswordPage', () => {
     expect(received).toHaveBeenCalledExactlyOnceWith({ token: ' opaque 😀 ', new_password: newPassword })
   })
 
+  it('submits a lowercase passphrase and safely displays backend blocklist rejection', async () => {
+    const received = vi.fn()
+    server.use(http.post(identityApiUrl('/auth/reset-password'), async ({ request }) => {
+      received(await request.json())
+      return HttpResponse.json({ code: 'PASSWORD_POLICY_VIOLATION', message: 'Private backend detail', details: [] }, { status: 400 })
+    }))
+    const { user } = renderAuthPage('/reset-password', undefined, { search: '?token=synthetic', integration: true })
+    const newPassword = 'orchid lantern meadow brook'
+    setAuthFields({ 'New password': newPassword, 'Confirm password': newPassword })
+    await user.click(screen.getByRole('button', { name: 'Reset password' }))
+    await screen.findByText('Choose a different password. Common passwords are not allowed.')
+    await waitFor(() => expect(screen.getByLabelText('New password', { exact: true })).toHaveFocus())
+    expect(received).toHaveBeenCalledExactlyOnceWith({ token: 'synthetic', new_password: newPassword })
+    expect(document.body.textContent).not.toContain('Private backend detail')
+    expect(document.body.textContent).not.toContain(newPassword)
+    expect(screen.getByRole('button', { name: 'Reset password' })).toBeEnabled()
+  })
+
   it('submits the captured opaque token in StrictMode, scrubs URL and replaces navigation with safe success', async () => {
     const received = vi.fn()
     server.use(http.post(identityApiUrl('/auth/reset-password'), async ({ request }) => {
@@ -101,7 +119,7 @@ describe('ResetPasswordPage', () => {
   it('reports a policy violation and revalidates confirmation when the new password changes', async () => {
     const send = vi.spyOn(passwordRecoveryApi, 'resetPassword')
     const { user } = renderAuthPage('/reset-password', undefined, { search: '?token=synthetic' })
-    setAuthFields({ 'New password': 'Abc1abcd', 'Confirm password': 'Abc1abcd' })
+    setAuthFields({ 'New password': 'short', 'Confirm password': 'short' })
     await user.click(screen.getByRole('button', { name: 'Reset password' }))
     await screen.findByText('Please meet all password requirements.')
     setAuthFields({ ...validFields, 'Confirm password': 'different' })

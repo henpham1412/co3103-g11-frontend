@@ -57,7 +57,6 @@ export function validateProfileValue(field: ProfileField, value: unknown, today 
   if (!value.trim()) return
   const limit = profileLengthLimits[field]
   if (limit && value.length > limit.max) return `${limit.label} must not exceed ${limit.max} characters.`
-  if (field === 'phoneNumber' && (!/^\+[1-9]\d{6,14}$/.test(value) || /\s/.test(value))) return 'Enter a phone number in E.164 format: + followed by 7 to 15 digits, starting with 1–9.'
   if (field === 'dateOfBirth') return validateDateOfBirth(value, today)
   if (field === 'avatarUrl' && !isSafeAvatarUrl(value)) return 'Enter an absolute HTTP or HTTPS image URL without credentials.'
 }

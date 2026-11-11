@@ -66,11 +66,13 @@ it.each([
   }
 })
 
-it('preserves valid E.164 phones and rejects malformed or overlong direct writes', () => {
-  for (const phoneNumber of ['+1234567', '+84912345678', '+123456789012345']) {
+it('preserves backend-supported phone text, enforces length and keeps null/omission semantics', () => {
+  for (const phoneNumber of ['0912345678', '+84 912 345 678', '+84912345678', ' 0912345678 ', '+' + '1'.repeat(29)]) {
     expect(serializeProfileChanges({ phoneNumber })).toEqual({ phone_number: phoneNumber })
   }
-  for (const phoneNumber of ['not-a-phone', '😀', '+0012345', '84912345678', '+84 912345678', '+' + '1'.repeat(29), '+' + '1'.repeat(30)]) {
+  for (const phoneNumber of ['1'.repeat(31), '😀'.repeat(15) + '1', '0912345678\0']) {
     expect(() => serializeProfileChanges({ phoneNumber })).toThrow('Please check your profile changes.')
   }
+  expect(serializeProfileChanges({ phoneNumber: null })).toEqual({ phone_number: null })
+  expect(serializeProfileChanges({ bio: 'Unchanged phone' })).toEqual({ bio: 'Unchanged phone' })
 })

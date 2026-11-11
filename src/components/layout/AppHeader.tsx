@@ -25,9 +25,8 @@ export function AppHeader() {
   const isProfile = useMatch('/profile') !== null
   if (state.status !== 'authenticated') return null
   const { user } = state
-  const rawRole = ('role' in user && typeof user.role === 'string' ? user.role.trim() : '') || 'Student'
-  const role = rawRole.charAt(0).toUpperCase() + rawRole.slice(1).toLowerCase()
-  const profileLabel = `${user.fullName} - ${role}`
+  // Central Identity has no authoritative LMS-local role in this context.
+  const profileLabel = `${user.fullName} - Account`
   const items: MenuProps['items'] = [
     {
       key: 'profile',

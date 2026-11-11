@@ -3,14 +3,18 @@ import { invalidTextCases } from '@/test/fixtures/invalidText'
 import { validateConfirmPassword, validateRegisterPassword } from './authValidation'
 import { resetPasswordRequirements, validateResetPassword, validateResetToken } from './passwordRecoveryValidation'
 
-it('requires every reset rule without changing registration', () => {
-  for (const value of ['', '        ', 'Ab1!abc', 'ab1!abcd', 'AB1!ABCD', 'Abc!abcd', 'Abc1abcd', 'Abc1abcd ', 'Abc1abcd\n']) {
-    expect(validateResetPassword(value) !== undefined).toBe(true)
+it('shares registration length, byte and non-whitespace policy without complexity rules', () => {
+  for (const value of ['', '        ', 'Ab1!abc', 'é'.repeat(37), '😀'.repeat(18) + 'a']) {
+    expect(validateResetPassword(value)).toBeDefined()
+    expect(validateRegisterPassword(value)).toBeDefined()
     expect(resetPasswordRequirements(value).some(rule => !rule.met)).toBe(true)
   }
-  for (const value of ['Ab1!abcd', ' Ab1!abcd ', 'Ab1€abcd', 'Ab1!é'.padEnd(71, 'a')]) expect(validateResetPassword(value)).toBeUndefined()
-  expect(validateResetPassword('Ab1!é'.padEnd(72, 'a')) !== undefined).toBe(true)
-  expect(validateRegisterPassword('abcdefgh')).toBeUndefined()
+  // Common-password rejection remains server-side, including for these syntactically valid values.
+  for (const value of ['orchid lantern meadow brook', 'abcdefgh', '12345678', 'ABCDABCD', 'Abc1abcd', ' pass   ', '😀😀😀😀', 'é'.repeat(36), '😀'.repeat(18)]) {
+    expect(validateResetPassword(value)).toBeUndefined()
+    expect(validateRegisterPassword(value)).toBeUndefined()
+    expect(resetPasswordRequirements(value).every(rule => rule.met)).toBe(true)
+  }
   expect(validateConfirmPassword('different', 'Ab1!abcd')).toBe('Passwords do not match.')
   expect(validateConfirmPassword('Ab1!abcd', 'Ab1!abcd')).toBeUndefined()
   expect(validateResetToken(' ')).toBeDefined()
@@ -22,6 +26,7 @@ describe.each(invalidTextCases)('$name', ({ character }) => {
     const value = position === 'start' ? character + 'Ab1!abcd'
       : position === 'middle' ? 'Ab1!' + character + 'abcd' : 'Ab1!abcd' + character
     expect(validateResetPassword(value)).toBe('Please remove invalid characters from your new password.')
+    expect(validateRegisterPassword(value)).toBe('Please remove invalid characters from your password.')
     expect(validateResetToken(value)).toBe('Please enter a valid reset token from your email.')
     expect(resetPasswordRequirements(value).every(rule => rule.met)).toBe(false)
   })

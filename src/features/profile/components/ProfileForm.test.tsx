@@ -38,7 +38,7 @@ it('disables pristine/reverted saves and never submits an unchanged form', async
 
 it.each([
   ['Full Name', ''], ['Avatar URL', 'javascript:alert(1)'], ['Date of birth', '9999-12-31'],
-  ['Phone number', 'not-a-phone'],
+  ['Phone number', '1'.repeat(31)],
 ])('blocks invalid %s even when the form is submitted directly', async (label, value) => {
   const { save } = setup()
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
@@ -89,4 +89,12 @@ it('retains a dirty draft when the context user changes and locks all editing du
   expect(screen.getByLabelText('Bio')).toHaveValue('My draft')
   expect(screen.getByLabelText('Bio')).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+})
+
+it.each(['0912345678', '+84 912 345 678'])('saves backend-supported phone text unchanged: %s', async phoneNumber => {
+  const { save, user } = setup()
+  fireEvent.change(screen.getByLabelText('Phone number'), { target: { value: phoneNumber } })
+  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+  expect(save.mock.calls[0][0]).toMatchObject({ phoneNumber })
 })

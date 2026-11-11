@@ -23,3 +23,11 @@ it('uses safe local copy for network, throttling and account errors', () => {
     expect(result.message?.includes('email not found')).toBe(false)
   }
 })
+
+it('binds backend policy rejection to the new password with safe actionable copy', () => {
+  const problem = new ApiError(errorEnvelope({ status: 400, code: 'PASSWORD_POLICY_VIOLATION', message: 'private backend detail' }))
+  expect(recoveryErrorPresentation(problem, 'reset')).toEqual({
+    field: 'newPassword', fields: [{ name: 'newPassword', errors: ['Choose a different password. Common passwords are not allowed.'] }],
+  })
+  expect(recoveryErrorPresentation(problem, 'forgot').field).toBeUndefined()
+})

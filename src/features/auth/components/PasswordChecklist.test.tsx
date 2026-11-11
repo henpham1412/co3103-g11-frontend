@@ -4,16 +4,17 @@ import { PasswordChecklist } from './PasswordChecklist'
 
 describe('PasswordChecklist', () => {
   it('uses the reset requirements without displaying the password', () => {
-    const { rerender } = render(<PasswordChecklist mode="reset" password="Ab1!abcd" />)
+    const { rerender } = render(<PasswordChecklist password="Ab1!abcd" />)
     const list = screen.getByRole('list', { name: 'Password requirements' })
-    expect(within(list).getAllByRole('listitem')).toHaveLength(7)
+    expect(within(list).getAllByRole('listitem')).toHaveLength(4)
     expect(within(list).getAllByRole('listitem').every(item => item.dataset.state === 'met')).toBe(true)
     expect(list).not.toHaveTextContent('Ab1!abcd')
-    rerender(<PasswordChecklist mode="reset" password="Ab1 abcd" />)
-    expect(within(list).getAllByRole('listitem')[4]).toHaveAttribute('data-state', 'pending')
+    rerender(<PasswordChecklist password="orchid lantern meadow brook" />)
+    expect(within(list).getAllByRole('listitem').every(item => item.dataset.state === 'met')).toBe(true)
+    expect(screen.getByText('Common passwords are not allowed.')).toBeInTheDocument()
   })
   it('announces invalid text as unmet without displaying the secret', () => {
-    render(<PasswordChecklist mode="reset" password={'Ab1!secret\0'} />)
+    render(<PasswordChecklist password={'Ab1!secret\0'} />)
     const list = screen.getByRole('list', { name: 'Password requirements' })
     expect(within(list).getByText('No invalid characters').closest('li')).toHaveAttribute('data-state', 'pending')
     expect(list).not.toHaveTextContent('Ab1!secret')

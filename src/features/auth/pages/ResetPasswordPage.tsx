@@ -90,7 +90,7 @@ function ResetPasswordForm({ selection, clear }: { selection: ResetToken; clear:
         <Form.Item name="newPassword" label="New password" rules={[authRule(validateResetPassword)]}>
           <Input.Password autoComplete="new-password" aria-describedby="reset-requirements" />
         </Form.Item>
-        <div id="reset-requirements"><PasswordChecklist mode="reset" password={password} /></div>
+        <div id="reset-requirements"><PasswordChecklist password={password} /></div>
         <Form.Item name="confirmPassword" label="Confirm password" dependencies={['newPassword']} rules={[authRule(value => validateConfirmPassword(value, form.getFieldValue('newPassword')))]}>
           <Input.Password autoComplete="new-password" />
         </Form.Item>

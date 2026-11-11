@@ -28,8 +28,8 @@ export function ProfileSummary({ user, onEdit, onSignOut }: Props) {
         <h1 id="profile-summary-title">{user.fullName}</h1>
         <div className="profile-badges">
           <span className="profile-status" data-status={user.status}><span className="profile-status-dot" aria-hidden="true" />{user.status}</span>
-          {/* Student presentation only; never used to determine workspace access. */}
-          <span className="profile-account-badge">STUDENT</span>
+          {/* Global identity does not establish an LMS-local role. */}
+          <span className="profile-account-badge">Account</span>
         </div>
         <p className="profile-email"><span>{user.email}</span><CheckCircleFilled className="profile-email-check" aria-hidden="true" /></p>
       </div>

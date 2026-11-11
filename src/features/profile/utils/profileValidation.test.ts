@@ -44,18 +44,15 @@ it('preserves free text but rejects invalid runtime types and full name clearing
   }
 })
 
-it.each(['+84912345678', '+1234567', '+123456789012345'])('accepts E.164 phone %s', value => {
+it.each(['0912345678', '+84 912 345 678', '+84912345678', '84912345678', ' +84912345678 ', '+' + '1'.repeat(29)])('accepts backend-supported phone text %s', value => {
   expect(validateProfileValue('phoneNumber', value)).toBeUndefined()
 })
 
-it.each(['not-a-phone', 'abc', '😀', '84912345678', '+0012345', '++84912345678', '+123456', '+1234567890123456', '+84 912345678', ' +84912345678', '+84912345678 ', '+１２３４５６７', '+84912345678\n'])('rejects non-E.164 phone %s', value => {
-  expect(validateProfileValue('phoneNumber', value)).toContain('E.164')
-})
-
-it('checks the phone storage cap before E.164 format at 30/31 UTF-16 units', () => {
-  expect(validateProfileValue('phoneNumber', '+' + '1'.repeat(29))).toContain('E.164')
-  expect(validateProfileValue('phoneNumber', '+' + '1'.repeat(30))).toBe('Phone number must not exceed 30 characters.')
-  expect(validateProfileValue('phoneNumber', '😀'.repeat(15) + '1')).toBe('Phone number must not exceed 30 characters.')
+it('enforces the backend phone cap at 30/31 UTF-16 units without a format restriction', () => {
+  for (const value of ['1'.repeat(30), '😀'.repeat(15)]) {
+    expect(validateProfileValue('phoneNumber', value)).toBeUndefined()
+    expect(validateProfileValue('phoneNumber', value + '1')).toBe('Phone number must not exceed 30 characters.')
+  }
 })
 
 it.each([

@@ -15,6 +15,10 @@ export function recoveryErrorPresentation(error: unknown, mode: 'forgot' | 'rese
     const message = 'This reset link is invalid or has expired. Please request a new reset link.'
     return manualToken ? { fields: [{ name: 'token', errors: [message] }], field: 'token', message } : { message }
   }
+  if (mode === 'reset' && problem.status === 400 && problem.code === 'PASSWORD_POLICY_VIOLATION') {
+    const message = 'Choose a different password. Common passwords are not allowed.'
+    return { fields: [{ name: 'newPassword', errors: [message] }], field: 'newPassword' }
+  }
   const aliases: Record<string, RecoveryField> = { email: 'email', token: 'token', new_password: 'newPassword', newPassword: 'newPassword', confirmPassword: 'confirmPassword' }
   const allowed: RecoveryField[] = mode === 'forgot' ? ['email'] : ['newPassword', 'confirmPassword', ...(manualToken ? ['token' as const] : [])]
   const copy: Record<RecoveryField, string> = { email: 'Please check your email address.', token: 'Please check your reset token.', newPassword: 'Please check your new password against the requirements.', confirmPassword: 'Passwords do not match.' }

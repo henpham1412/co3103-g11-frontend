@@ -247,12 +247,26 @@ a 24px target and a visible keyboard focus indicator.
 Recovery remains accessible while a previous session is restoring or has a restore
 error, and while another account is signed in. Session verification gates are on
 protected and public-only routes; `/profile` stays protected. Clicking the header's
-profile badge (avatar, full name and role) opens a dropdown containing an
-**Account Profile** link to `/profile`, a divider, and a **Sign Out** action.
-Header role text uses Title Case, such as `Student` or `Administrator`, with
-`Student` as the presentation fallback. Central Identity supplies no workspace role;
-this label does not grant authorization. **Sign Out** also remains in the profile
+profile badge (avatar, full name and neutral Account label) opens a dropdown
+containing an **Account Profile** link to `/profile`, a divider, and a **Sign Out**
+action. Central Identity and the FE-1 session supply no authoritative LMS-local
+role for this page, so header and profile summary use Account for all identities.
+No authorization is inferred from this label. **Sign Out** also remains in the profile
 summary card. Anonymous profile entry returns to that page after sign-in.
+
+### Reset email deployment configuration
+
+Set Central Identity's `APP_RESET_PASSWORD_BASE_URL` (Spring property
+`app.reset-password.base-url`) to the public frontend URL ending in
+`/reset-password`, for example `https://lms.example.edu/reset-password`.
+For local Vite development on port 5173, use
+`APP_RESET_PASSWORD_BASE_URL=http://localhost:5173/reset-password`.
+The backend appends `?token=...`, so configure the route without a query string
+or fragment. Its default points to port 3000 and must be overridden when the
+frontend uses another origin. Production hosting must serve the SPA for direct
+`/reset-password` navigation. This setting belongs to Central Identity deployment,
+not to a hardcoded frontend URL. Configure SMTP separately and verify email
+link delivery in the deployment environment; mocked frontend tests do not prove it.
 
 ### Requesting and using a reset link
 
@@ -270,13 +284,13 @@ requires manual entry or reopening the email link. A new query starts a fresh fo
 and cancels the previous request.
 
 Reset submits only `{ token, new_password }` to `/auth/reset-password`. The new
-password requires at least eight JavaScript characters, an ASCII uppercase letter,
-an ASCII lowercase letter, a digit and a Unicode punctuation/symbol character.
-Whitespace does not count as special. The maximum is 72 UTF-8 bytes, confirmed by
-CI-3's `ResetPasswordRequest` (which also specifies 8–128 UTF-16 units). The inspected
-backend does not enforce the frontend's complexity or NUL rejection. Confirmation must match exactly;
-passwords and opaque tokens are never trimmed or normalized. Login and registration
-retain their existing policies.
+password shares registration's policy: at least eight UTF-16 units, at most
+72 UTF-8 bytes and at least one non-whitespace character. No uppercase, digit
+or special-character requirement is added. Central Identity enforces its common-password
+blocklist; the UI does not duplicate it. Invalid Unicode/NUL safeguards remain.
+Confirmation must match exactly;
+passwords and opaque tokens are never trimmed or normalized. Login behavior remains
+unchanged; registration and reset use the same frontend policy.
 
 `INVALID_OR_EXPIRED_RESET_TOKEN` produces safe feedback and a link to request again.
 Other errors use local copy, with allowlisted field binding for validation failures.
@@ -320,12 +334,11 @@ Email, user ID and status are read-only. `profileApi.updateCurrentUser` sends a 
 session's Bearer credential. A pristine or reverted form does not send a request.
 Full name is trimmed, nonblank, at most 150 characters and never null. DOB must be a
 real `YYYY-MM-DD` calendar date no later than local today; both the form and API
-serializer enforce it. Phone numbers remain strings, must match E.164
-`^\+[1-9]\d{6,14}$` without whitespace, and have a storage cap of 30 UTF-16 units.
-Locale is limited to 20 and timezone to 64 UTF-16 units (`String.length`), with no
-locale/timezone whitelist. Shared validation protects both form and serializer;
-inputs also expose `maxLength`. E.164 limits valid phone values to at most 15 digits;
-CI-3's inspected DTO currently enforces length/Unicode but has no phone-format regex.
+serializer enforce it. Phone numbers remain strings of at most 30 UTF-16 units,
+matching Central Identity `UpdateProfileRequest`; domestic numbers such as
+`0912345678` and spaced numbers such as `+84 912 345 678` are accepted and
+preserved exactly. There is no E.164-only restriction. Locale is limited to
+20 UTF-16 units and timezone to 64; inputs also expose `maxLength`.
 Untouched legacy phones are omitted from updates. Bio newlines are preserved.
 Avatar schemes are lowercased before PATCH to satisfy Hibernate's `https?://.*`
 rule; path/query case and Unicode are preserved. Unsafe URLs are rejected in the
@@ -400,7 +413,7 @@ not evidence of live backend compatibility. The inspected CI-3 snapshot implemen
 the DOC-05 `/api/v1/users/me` response, nullable PATCH fields and 200 acknowledgments;
 the fixtures now reflect those contracts. The legacy `{ id, fullName, role, ... }`
 response is deliberately unsupported. Regression tests cover null clearing and
-omission, E.164, length boundaries, avatar URL normalization and control contrast.
+omission, backend-supported phone formats, length boundaries, avatar URL normalization and control contrast.
 
 For production browser verification:
 
