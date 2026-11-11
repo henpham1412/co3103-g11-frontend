@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { membershipPage } from '@/test/fixtures/membershipWire'
 
 const { get, post, deleteRequest, defaults } = vi.hoisted(() => ({
   get: vi.fn(),
@@ -48,10 +49,71 @@ describe('class API client', () => {
 
   it('uses the documented current-user membership endpoint', async () => {
     const signal = new AbortController().signal
+    get.mockResolvedValueOnce({ data: { items: [], page: 1, size: 20, total_items: 0, total_pages: 0 } })
 
-    await getCurrentMemberships(signal)
+    expect(await getCurrentMemberships(signal)).toEqual([])
 
-    expect(get).toHaveBeenCalledWith('/me/classes', { signal })
+    expect(get).toHaveBeenCalledWith('/me/classes', { params: { page: 1, size: 20 }, signal })
+  })
+
+  it('maps literal ACTIVE and PENDING wire memberships to the internal status', async () => {
+    get.mockResolvedValueOnce({ data: {
+      items: [
+        { class_id: 'enrolled-class', membership_status: 'ACTIVE' },
+        { class_id: 'requested-class', membership_status: 'PENDING' },
+      ],
+      page: 1, size: 20, total_items: 2, total_pages: 1,
+    } })
+
+    expect(await getCurrentMemberships()).toEqual([
+      { class_id: 'enrolled-class', status: 'ACTIVE' },
+      { class_id: 'requested-class', status: 'PENDING' },
+    ])
+  })
+
+  it('collects every page and forwards the cancellation signal to each request', async () => {
+    const signal = new AbortController().signal
+    const firstPage = Array.from({ length: 20 }, (_, i) => ({ class_id: `class-${i}`, membership_status: 'ACTIVE' }))
+    get.mockResolvedValueOnce({ data: membershipPage(firstPage, 1, 41) })
+      .mockResolvedValueOnce({ data: membershipPage(firstPage.map((item) => ({ ...item, class_id: `second-${item.class_id}` })), 2, 41) })
+      .mockResolvedValueOnce({ data: membershipPage([{ class_id: 'last-class', membership_status: 'PENDING' }], 3, 41) })
+
+    const result = await getCurrentMemberships(signal)
+
+    expect(result).toHaveLength(41)
+    expect(result.at(-1)).toEqual({ class_id: 'last-class', status: 'PENDING' })
+    for (let page = 1; page <= 3; page++) {
+      expect(get).toHaveBeenNthCalledWith(page, '/me/classes', { params: { page, size: 20 }, signal })
+    }
+  })
+
+  it.each([
+    null,
+    [],
+    { items: [], page: 1, size: 20, total_items: 1, total_pages: 1 },
+    { items: [], page: 1, size: 20, total_items: 0 },
+    { items: [], page: 2, size: 20, total_items: 0, total_pages: 0 },
+    { items: [], page: 1, size: 20, total_items: 0, total_pages: 1 },
+    { items: [{ class_id: 'class-1', status: 'ACTIVE' }], page: 1, size: 20, total_items: 1, total_pages: 1 },
+    { items: [{ class_id: '', membership_status: 'ACTIVE' }], page: 1, size: 20, total_items: 1, total_pages: 1 },
+    { items: [{ class_id: 'class-1', membership_status: 'UNKNOWN' }], page: 1, size: 20, total_items: 1, total_pages: 1 },
+  ])('rejects malformed or incomplete membership data instead of treating it as NONE: %j', async (data) => {
+    get.mockResolvedValueOnce({ data })
+    await expect(getCurrentMemberships()).rejects.toThrow('Membership status is unavailable')
+  })
+
+  it.each(['failed', 'malformed', 'changed', 'duplicate'])('rejects the entire membership read when a later page is %s', async (failure) => {
+    get.mockResolvedValueOnce({ data: membershipPage(
+      Array.from({ length: 20 }, (_, i) => ({ class_id: `class-${i}`, membership_status: 'ACTIVE' })), 1, 21,
+    ) })
+    if (failure === 'failed') get.mockRejectedValueOnce(new Error('Service unavailable'))
+    else if (failure === 'malformed') get.mockResolvedValueOnce({ data: [] })
+    else get.mockResolvedValueOnce({ data: membershipPage(
+      [{ class_id: failure === 'duplicate' ? 'class-0' : 'last-class', membership_status: 'PENDING' }],
+      2, failure === 'changed' ? 22 : 21,
+    ) })
+
+    await expect(getCurrentMemberships()).rejects.toThrow()
   })
 
   it('separates class details from the learning outline', async () => {

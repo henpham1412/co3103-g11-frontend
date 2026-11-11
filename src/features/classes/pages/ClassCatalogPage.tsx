@@ -189,12 +189,14 @@ export default function ClassCatalogPage() {
       const code = isAxiosError<{ code?: string }>(requestError)
         ? requestError.response?.data?.code
         : undefined;
-      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE") {
-        // Either code means the server state differs from this page, so it is re-read.
+      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE" || code === "ENROLLMENT_POLICY_CHANGED") {
+        // These conflicts mean the server state differs from this page, so it is re-read.
         if (code === "CLASS_FULL") {
           message.error("This class is full.");
-        } else {
+        } else if (code === "INVALID_MEMBERSHIP_STATE") {
           message.warning("Your membership already exists. Refreshing its current status.");
+        } else {
+          message.error(getErrorMessage(requestError));
         }
         setReadToken((token) => token + 1);
       } else {
@@ -224,6 +226,10 @@ export default function ClassCatalogPage() {
       setReadToken((token) => token + 1);
     } catch (requestError) {
       message.error(getErrorMessage(requestError));
+      if (isAxiosError<{ code?: string }>(requestError)
+        && requestError.response?.data?.code === "INVALID_MEMBERSHIP_STATE") {
+        setReadToken((token) => token + 1);
+      }
     } finally {
       endOperation(classId, operation);
     }

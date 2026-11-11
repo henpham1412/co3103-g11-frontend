@@ -38,6 +38,16 @@ export interface CurrentMembership {
   class_id: string;
   status: MembershipStatus;
 }
+
+// /me/classes returns class summaries, not the membership mutation response.
+// Only ACTIVE and PENDING memberships are included by this endpoint.
+export interface CurrentMembershipPage {
+  items: { class_id: string; membership_status: "ACTIVE" | "PENDING" }[];
+  page: number;
+  size: number;
+  total_items: number;
+  total_pages: number;
+}
 export interface ClassOutlineResponse {
   class_id: string;
   chapters: ClassOutlineChapter[];
