@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Spin, Tag, Typography, message } from "antd";
+import { Alert, App, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Popconfirm, Select, Spin, Tag, Typography } from "antd";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
@@ -36,6 +36,7 @@ function normalizedClass(values: CreateTutorClass): CreateTutorClass {
 }
 
 export default function TutorClassManagementPage() {
+  const { message } = App.useApp();
   const [classes, setClasses] = useState<TutorClass[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [selectedDetails, setSelectedDetails] = useState<ClassCatalogItem>();

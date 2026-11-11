@@ -1,18 +1,25 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { App } from 'antd'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { membershipPage } from '@/test/fixtures/membershipWire'
 
 import type { ClassCatalogItem, ClassCatalogResponse, MembershipStatus } from '../types'
 
 const api = vi.hoisted(() => ({
   getClassCatalog: vi.fn(),
-  getCurrentMemberships: vi.fn(),
+  membershipRequest: vi.fn(),
   joinClass: vi.fn(),
   leaveClass: vi.fn(),
   withdrawJoinRequest: vi.fn(),
 }))
 
-vi.mock('../api/classApi', () => api)
+vi.mock('@/api/lmsClient', () => ({ lmsClient: { get: api.membershipRequest } }))
+vi.mock('../api/classApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/classApi')>()
+  return { ...api, getCurrentMemberships: actual.getCurrentMemberships }
+})
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ state: { status: 'authenticated', user: { fullName: 'Test Student' } }, logout: vi.fn() }) }))
 
 import ClassCatalogPage from './ClassCatalogPage'
@@ -46,11 +53,13 @@ function catalogResponse(items: ClassCatalogItem[], page = 1, total = items.leng
 
 function renderCatalog() {
   return render(
-    <MemoryRouter initialEntries={['/classes']}>
-      <Routes>
-        <Route path="/classes" element={<ClassCatalogPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <App>
+      <MemoryRouter initialEntries={['/classes']}>
+        <Routes>
+          <Route path="/classes" element={<ClassCatalogPage />} />
+        </Routes>
+      </MemoryRouter>
+    </App>,
   )
 }
 
@@ -72,7 +81,7 @@ async function confirmCardAction(card: HTMLElement, triggerName: string, okName:
 describe('FE-3 class catalog', () => {
   beforeEach(() => {
     api.getClassCatalog.mockResolvedValue(catalogResponse([makeClass(1)]))
-    api.getCurrentMemberships.mockResolvedValue([])
+    api.membershipRequest.mockResolvedValue({ data: membershipPage([]) })
     api.joinClass.mockResolvedValue({ status: 'ACTIVE' })
     api.leaveClass.mockResolvedValue(undefined)
     api.withdrawJoinRequest.mockResolvedValue(undefined)
@@ -86,6 +95,79 @@ describe('FE-3 class catalog', () => {
       expect.objectContaining({ page: 1, size: 12, sort: 'created_at,desc' }),
       expect.any(AbortSignal),
     )
+  })
+
+  it.each(['ACTIVE', 'PENDING'])('loads a %s membership beyond page one through the real membership mapper', async (status) => {
+    api.membershipRequest
+      .mockResolvedValueOnce({ data: membershipPage(Array.from({ length: 20 }, (_, i) => ({ class_id: `other-${i}`, membership_status: 'ACTIVE' })), 1, 21) })
+      .mockResolvedValueOnce({ data: membershipPage([{ class_id: 'class-1', membership_status: status }], 2, 21) })
+
+    renderCatalog()
+
+    const card = await cardOf('Course 1')
+    expect(await within(card).findByRole('button', { name: status === 'ACTIVE' ? 'Leave class' : 'Withdraw request' })).toBeEnabled()
+    expect(within(card).queryByRole('button', { name: 'Join Class' })).not.toBeInTheDocument()
+  })
+
+  it('disables join rather than assuming NONE when membership JSON is malformed', async () => {
+    api.membershipRequest.mockResolvedValue({ data: [{ class_id: 'class-1', status: 'ACTIVE' }] })
+    renderCatalog()
+    const card = await cardOf('Course 1')
+    expect(await within(card).findByRole('button', { name: 'Membership unavailable' })).toBeDisabled()
+  })
+
+  it('refreshes a changed enrollment policy after 409 and can submit using the new policy', async () => {
+    api.getClassCatalog.mockResolvedValueOnce(catalogResponse([makeClass(1)]))
+      .mockResolvedValue(catalogResponse([makeClass(1, { enrollment_policy: 'APPROVAL_REQUIRED', active_member_count: 7 })]))
+    api.joinClass.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409, data: { code: 'ENROLLMENT_POLICY_CHANGED', message: 'Enrollment policy changed.' } } })
+      .mockImplementationOnce(() => {
+        api.membershipRequest.mockResolvedValue({ data: membershipPage([{ class_id: 'class-1', membership_status: 'PENDING' }]) })
+        return Promise.resolve({ status: 'PENDING' })
+      })
+    renderCatalog()
+    fireEvent.click(within(await cardOf('Course 1')).getByRole('button', { name: 'Join Class' }))
+
+    expect(await screen.findByText('Enrollment policy changed.')).toBeInTheDocument()
+    const request = await screen.findByRole('button', { name: 'Request to Join' })
+    expect(screen.getByText('7/20 Seats')).toBeInTheDocument()
+    expect(api.membershipRequest).toHaveBeenCalledTimes(2)
+    fireEvent.click(request)
+    expect(await screen.findByRole('button', { name: 'Withdraw request' })).toBeInTheDocument()
+    expect(api.joinClass).toHaveBeenLastCalledWith('class-1', 'APPROVAL_REQUIRED')
+  })
+
+  it.each([
+    ['ACTIVE', null],
+    ['PENDING', null],
+    ['PENDING', 'ACTIVE'],
+  ] as const)('refreshes membership and seats after a stale %s ends with 409 (now %s)', async (previous, current) => {
+    api.membershipRequest.mockResolvedValueOnce({ data: membershipPage([{ class_id: 'class-1', membership_status: previous }]) })
+      .mockResolvedValue({ data: membershipPage(current ? [{ class_id: 'class-1', membership_status: current }] : []) })
+    api.getClassCatalog.mockResolvedValueOnce(catalogResponse([makeClass(1)]))
+      .mockResolvedValue(catalogResponse([makeClass(1, { active_member_count: 7 })]))
+    const operation = previous === 'ACTIVE' ? api.leaveClass : api.withdrawJoinRequest
+    operation.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409, data: { code: 'INVALID_MEMBERSHIP_STATE', message: 'Membership changed elsewhere.' } } })
+    renderCatalog()
+    const card = await cardOf('Course 1')
+    await confirmCardAction(card, previous === 'ACTIVE' ? 'Leave class' : 'Withdraw request', previous === 'ACTIVE' ? 'Leave' : 'Withdraw')
+
+    expect(await screen.findByText('Membership changed elsewhere.')).toBeInTheDocument()
+    expect(await screen.findByText('7/20 Seats')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: current ? 'Leave class' : 'Join Class' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Withdraw request' })).not.toBeInTheDocument()
+    expect(api.membershipRequest).toHaveBeenCalledTimes(2)
+    expect(api.getClassCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps membership controls disabled if the conflict refetch fails', async () => {
+    api.membershipRequest.mockResolvedValueOnce({ data: membershipPage([{ class_id: 'class-1', membership_status: 'ACTIVE' }]) })
+      .mockRejectedValue(new Error('Membership refetch unavailable'))
+    api.leaveClass.mockRejectedValue({ isAxiosError: true, response: { status: 409, data: { code: 'INVALID_MEMBERSHIP_STATE', message: 'Membership changed elsewhere.' } } })
+    renderCatalog()
+    await confirmCardAction(await cardOf('Course 1'), 'Leave class', 'Leave')
+    expect(await screen.findByText('Membership changed elsewhere.')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Membership unavailable' })).toBeDisabled()
+    expect(screen.queryByText('Enrolled')).not.toBeInTheDocument()
   })
 
   it('submits trimmed search text and resets the server page to one', async () => {
@@ -145,10 +227,10 @@ describe('FE-3 class catalog', () => {
 
   it('shows the actual active and pending membership states', async () => {
     api.getClassCatalog.mockResolvedValue(catalogResponse([makeClass(1), makeClass(2)]))
-    api.getCurrentMemberships.mockResolvedValue([
-      { class_id: 'class-1', status: 'ACTIVE' },
-      { class_id: 'class-2', status: 'PENDING' },
-    ])
+    api.membershipRequest.mockResolvedValue({ data: membershipPage([
+      { class_id: 'class-1', membership_status: 'ACTIVE' },
+      { class_id: 'class-2', membership_status: 'PENDING' },
+    ]) })
 
     renderCatalog()
 
@@ -161,7 +243,7 @@ describe('FE-3 class catalog', () => {
   })
 
   it('keeps catalog browsing available but disables membership actions when current memberships fail to load', async () => {
-    api.getCurrentMemberships.mockRejectedValue(new Error('Membership service unavailable'))
+    api.membershipRequest.mockRejectedValue(new Error('Membership service unavailable'))
 
     renderCatalog()
 
@@ -181,9 +263,9 @@ describe('FE-3 class catalog', () => {
       makeClass(2, { enrollment_policy: 'APPROVAL_REQUIRED', active_member_count: 20, max_capacity: 20 }),
     ]))
     api.joinClass.mockResolvedValue({ status: 'PENDING' })
-    api.getCurrentMemberships
-      .mockResolvedValueOnce([])
-      .mockResolvedValue([{ class_id: 'class-2', status: 'PENDING' }])
+    api.membershipRequest
+      .mockResolvedValueOnce({ data: membershipPage([]) })
+      .mockResolvedValue({ data: membershipPage([{ class_id: 'class-2', membership_status: 'PENDING' }]) })
 
     renderCatalog()
 
@@ -210,14 +292,14 @@ describe('FE-3 class catalog', () => {
 
   it('re-reads the catalog page so capacity after joining is the server value, not a local guess', async () => {
     const items = [makeClass(1, { active_member_count: 19 })]
-    const memberships: { class_id: string; status: MembershipStatus }[] = []
+    const memberships: { class_id: string; membership_status: MembershipStatus }[] = []
     api.getClassCatalog.mockImplementation(() =>
       Promise.resolve(catalogResponse(items.map((item) => ({ ...item })))),
     )
-    api.getCurrentMemberships.mockImplementation(() => Promise.resolve([...memberships]))
+    api.membershipRequest.mockImplementation(() => Promise.resolve({ data: membershipPage(memberships) }))
     api.joinClass.mockImplementation(() => {
       items[0].active_member_count = 20
-      memberships.push({ class_id: 'class-1', status: 'ACTIVE' })
+      memberships.push({ class_id: 'class-1', membership_status: 'ACTIVE' })
       return Promise.resolve({ status: 'ACTIVE' })
     })
 
@@ -231,18 +313,18 @@ describe('FE-3 class catalog', () => {
     expect(await screen.findByText('20/20 Seats')).toBeInTheDocument()
     expect(screen.getByText('Enrolled')).toBeInTheDocument()
     expect(api.getClassCatalog).toHaveBeenCalledTimes(2)
-    expect(api.getCurrentMemberships).toHaveBeenCalledTimes(2)
+    expect(api.membershipRequest).toHaveBeenCalledTimes(2)
   })
 
   it('re-reads the catalog page after leaving a class', async () => {
     const items = [makeClass(1, { active_member_count: 20 })]
-    const memberships: { class_id: string; status: MembershipStatus }[] = [
-      { class_id: 'class-1', status: 'ACTIVE' },
+    const memberships: { class_id: string; membership_status: MembershipStatus }[] = [
+      { class_id: 'class-1', membership_status: 'ACTIVE' },
     ]
     api.getClassCatalog.mockImplementation(() =>
       Promise.resolve(catalogResponse(items.map((item) => ({ ...item })))),
     )
-    api.getCurrentMemberships.mockImplementation(() => Promise.resolve([...memberships]))
+    api.membershipRequest.mockImplementation(() => Promise.resolve({ data: membershipPage(memberships) }))
     api.leaveClass.mockImplementation(() => {
       items[0].active_member_count = 19
       memberships.length = 0
@@ -297,7 +379,7 @@ describe('FE-3 class catalog', () => {
   it('blocks a second withdrawal on the same card while the first request is running', async () => {
     let release: (() => void) | undefined
     api.getClassCatalog.mockResolvedValue(catalogResponse([makeClass(1)]))
-    api.getCurrentMemberships.mockResolvedValue([{ class_id: 'class-1', status: 'PENDING' }])
+    api.membershipRequest.mockResolvedValue({ data: membershipPage([{ class_id: 'class-1', membership_status: 'PENDING' }]) })
     api.withdrawJoinRequest.mockImplementation(
       () => new Promise<void>((resolve) => { release = resolve }),
     )

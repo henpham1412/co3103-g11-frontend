@@ -1,15 +1,19 @@
-﻿import { Button } from "antd";
+import { Button } from "antd";
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { PublicOnlyRoute } from "@/features/auth/components/PublicOnlyRoute";
 
-import ClassActivityPlaceholderPage from "../features/classes/pages/ClassActivityPlaceholderPage";
+import ClassActivityPage from "../features/classes/pages/ClassActivityPage";
+import AssessmentHistoryPage from "../features/classes/pages/AssessmentHistoryPage";
 import ClassCatalogPage from "../features/classes/pages/ClassCatalogPage";
 import ClassDetailPage from "../features/classes/pages/ClassDetailPage";
+import StudentLessonPage from "../features/classes/pages/StudentLessonPage";
 import TutorClassDetailPage from "../features/tutor-classes/pages/TutorClassDetailPage";
 import TutorClassManagementPage from "../features/tutor-classes/pages/TutorClassManagementPage";
+import TutorContentManagementPage from "../features/tutor-classes/pages/TutorContentManagementPage";
+import TutorQuizPage from "../features/tutor-classes/pages/TutorQuizPage";
 import TutorDashboardPage from "../features/tutor-classes/pages/TutorDashboardPage";
 import TutorRoute from "../features/tutor-classes/TutorRoute";
 import App from "./App";
@@ -45,10 +49,12 @@ export const router = createBrowserRouter([
           },
           { path: "/classes", element: <ClassCatalogPage /> },
           { path: "/classes/:classId", element: <ClassDetailPage /> },
+          { path: "/classes/:classId/lessons/:lessonId", element: <StudentLessonPage /> },
           {
             path: "/classes/:classId/lessons/:lessonId/activities/:activityId",
-            element: <ClassActivityPlaceholderPage />,
+            element: <ClassActivityPage />,
           },
+          { path: "/assessment-history", element: <AssessmentHistoryPage /> },
           { path: "/dashboard", element: <WorkspaceSectionPage /> },
           { path: "/discussion", element: <WorkspaceSectionPage /> },
           {
@@ -58,6 +64,9 @@ export const router = createBrowserRouter([
               { path: "/tutor/dashboard", element: <TutorDashboardPage /> },
               { path: "/tutor/classes", element: <TutorClassManagementPage /> },
               { path: "/tutor/classes/:classId", element: <TutorClassDetailPage /> },
+              { path: "/tutor/classes/:classId/content", element: <TutorContentManagementPage /> },
+              { path: "/tutor/classes/:classId/content/quiz/new", element: <TutorQuizPage /> },
+              { path: "/tutor/classes/:classId/content/quiz/:activityId", element: <TutorQuizPage /> },
               { path: "/tutor/discussion", element: <TutorWorkspaceSectionPage /> },
             ],
           },

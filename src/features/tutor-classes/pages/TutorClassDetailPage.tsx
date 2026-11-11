@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Avatar, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Spin, Tag, Tooltip, Typography, Upload, message } from "antd";
+import { Alert, App, Avatar, Button, Empty, Form, Input, InputNumber, Modal, Pagination, Select, Spin, Tag, Tooltip, Typography, Upload } from "antd";
+import { FolderOpenOutlined } from "@ant-design/icons";
 import { Link, useParams } from "react-router-dom";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
 import { getClassDetails } from "../../classes/api/classApi";
 import { normalizeApiError } from "@/api/apiError";
 import type { ClassCatalogItem } from "../../classes/types";
-import { approveTutorMember, getTutorClassMembers, rejectTutorMember, removeTutorMember, updateTutorClass, uploadClassThumbnail } from "../api/tutorClassApi";
-import type { TutorMember, TutorMemberPage } from "../types";
+import { approveTutorMember, getTutorClassMembers, getTutorOutline, rejectTutorMember, removeTutorMember, updateTutorClass, uploadClassThumbnail } from "../api/tutorClassApi";
+import type { TutorMember, TutorMemberPage, TutorOutline } from "../types";
 import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
 
 const PAGE_SIZE = 20;
@@ -21,11 +22,14 @@ const ROSTER_SORTS = [
 ];
 
 export default function TutorClassDetailPage() {
+  const { message } = App.useApp();
   const { classId = "" } = useParams();
   const [details, setDetails] = useState<ClassCatalogItem>();
   const [activeMembers, setActiveMembers] = useState<TutorMemberPage>();
   const [pendingMembers, setPendingMembers] = useState<TutorMemberPage>();
   const [removeCandidate, setRemoveCandidate] = useState<TutorMember>();
+  const [outline, setOutline] = useState<TutorOutline>();
+  const [activeTab, setActiveTab] = useState<"syllabus" | "members">("syllabus");
   const [activePage, setActivePage] = useState(1);
   const [pendingPage, setPendingPage] = useState(1);
   const [sort, setSort] = useState("requested_at,desc");
@@ -49,11 +53,13 @@ export default function TutorClassDetailPage() {
       getClassDetails(classId, controller.signal),
       getTutorClassMembers(classId, { ...roster, status: "ACTIVE", page: activePage }, controller.signal),
       getTutorClassMembers(classId, { ...roster, status: "PENDING", page: pendingPage }, controller.signal),
+      getTutorOutline(classId, controller.signal),
     ])
-      .then(([classDetails, active, pending]) => {
+      .then(([classDetails, active, pending, classOutline]) => {
         setDetails(classDetails);
         setActiveMembers(active);
         setPendingMembers(pending);
+        setOutline(classOutline);
         setError(undefined);
         setPermissionDenied(false);
       })
@@ -170,6 +176,12 @@ export default function TutorClassDetailPage() {
             <div className="tutor-class-detail-meta"><span>{details.tutor.full_name} · Tutor</span><span>{details.active_member_count}/{details.max_capacity ?? "∞"} Seats</span><Tag color="blue">{details.enrollment_policy}</Tag></div>
           </section>
 
+          <div className="tutor-page__tabs" role="tablist"><button className={activeTab === "syllabus" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "syllabus"} onClick={() => setActiveTab("syllabus")}>Course Syllabus</button><button className={activeTab === "members" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "members"} onClick={() => setActiveTab("members")}>Member <Tag>{activeMembers?.total_items ?? 0}</Tag></button></div>
+          {activeTab === "syllabus" ? <section className="tutor-panel tutor-syllabus">
+            <header className="tutor-syllabus__heading"><div><h2>Course Syllabus</h2><span>{outline?.chapters.length ?? 0} chapters · {outline?.chapters.reduce((sum, chapter) => sum + chapter.lessons.length, 0) ?? 0} lessons</span></div><Link to={`/tutor/classes/${classId}/content`}><Button icon={<FolderOpenOutlined />}>Manage content</Button></Link></header>
+            <Alert type="info" showIcon title="Tutor preview includes hidden content. Students can only access published content inside published chapters." />
+            {outline?.chapters.length ? <div className="tutor-syllabus__chapters">{outline.chapters.map((chapter, index) => <article className="tutor-syllabus__chapter" key={chapter.chapter_id}><header><strong>Chapter {index + 1} · {chapter.title}</strong><Tag color={chapter.status === "PUBLISHED" ? "green" : "default"}>{chapter.status}</Tag></header>{chapter.lessons.map((lesson, lessonIndex) => <div className="tutor-syllabus__lesson" key={lesson.lesson_id}><span>{index + 1}.{lessonIndex + 1} · {lesson.title}</span><span>{lesson.estimated_duration ?? "—"} mins · {lesson.status}</span></div>)}</article>)}</div> : <Empty description="No syllabus content yet" />}
+          </section> : <>
           <section className="tutor-page__section tutor-panel">
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">The current members API does not filter by name or email, so no search query is sent. Rows show full_name and email when the response includes those fields; otherwise the full student id is shown. Ordering uses the server sort parameter.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
             {archived && <Alert className="tutor-page__notice" type="info" showIcon title="This class is archived" description="Approve, reject and remove stay closed. Set the lifecycle back to Active before changing membership." />}
@@ -187,6 +199,7 @@ export default function TutorClassDetailPage() {
               <Pagination style={{ marginTop: 16, textAlign: "right" }} current={pendingPage} pageSize={PAGE_SIZE} total={pendingMembers.total_items} showSizeChanger={false} onChange={setPendingPage} />
             </> : <Empty description="No pending requests" />}
           </section>
+          </>}
         </> : <Empty description="Class not found" />}
 
         <Modal title="Edit Class Settings" open={editOpen} onCancel={() => setEditOpen(false)} onOk={saveSettings} confirmLoading={saving} okText="Save Changes">

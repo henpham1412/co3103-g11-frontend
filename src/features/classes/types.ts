@@ -38,6 +38,16 @@ export interface CurrentMembership {
   class_id: string;
   status: MembershipStatus;
 }
+
+// /me/classes returns class summaries, not the membership mutation response.
+// Only ACTIVE and PENDING memberships are included by this endpoint.
+export interface CurrentMembershipPage {
+  items: { class_id: string; membership_status: "ACTIVE" | "PENDING" }[];
+  page: number;
+  size: number;
+  total_items: number;
+  total_pages: number;
+}
 export interface ClassOutlineResponse {
   class_id: string;
   chapters: ClassOutlineChapter[];
@@ -46,9 +56,13 @@ export interface ClassOutlineResponse {
 export interface ClassOutlineChapter {
   chapter_id: string;
   title: string;
+  description?: string | null;
   sequence_order: number;
+  status: ContentVisibility;
   lessons: ClassOutlineLesson[];
 }
+
+export type ContentVisibility = "PUBLISHED" | "HIDDEN";
 
 export type ActivityType = "QUIZ" | "ASSIGNMENT";
 
@@ -58,12 +72,28 @@ export interface ClassOutlineActivity {
   description?: string | null;
   activity_type: ActivityType;
   sequence_order: number;
+  status?: ContentVisibility;
+}
+
+export type MaterialKind = "DOCUMENT" | "VIDEO" | "TEXT" | "URL";
+
+export interface ClassOutlineMaterial {
+  material_id: string;
+  title: string;
+  material_type: MaterialKind;
+  file_url: string | null;
+  content: string | null;
+  sequence_order: number;
+  status: ContentVisibility;
 }
 
 export interface ClassOutlineLesson {
   lesson_id: string;
   title: string;
+  description?: string | null;
   sequence_order: number;
+  status?: ContentVisibility;
   estimated_duration?: number | null;
+  materials?: ClassOutlineMaterial[];
   activities?: ClassOutlineActivity[];
 }
