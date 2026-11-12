@@ -15,6 +15,7 @@ export interface AuthContextValue {
   login(credentials: LoginCredentials, rememberMe?: boolean, signal?: AbortSignal): Promise<AuthSession>
   logout(reason?: LogoutReason): Promise<void>
   retrySessionVerification(): Promise<void>
+  refreshCurrentUser(signal?: AbortSignal): Promise<User>
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined)

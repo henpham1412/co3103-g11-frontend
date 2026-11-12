@@ -1,7 +1,6 @@
 import type { PropsWithChildren } from "react";
 import { App, ConfigProvider } from "antd";
 import { AuthProvider } from "@/features/auth/context/AuthProvider";
-import { AuthSessionState } from "@/features/auth/components/AuthSessionState";
 import { authTheme } from "./theme";
 
 export default function AppProviders({
@@ -11,7 +10,7 @@ export default function AppProviders({
     <ConfigProvider theme={authTheme}>
       <App>
         <AuthProvider>
-          <AuthSessionState>{children}</AuthSessionState>
+          {children}
         </AuthProvider>
       </App>
     </ConfigProvider>

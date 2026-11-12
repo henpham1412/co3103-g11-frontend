@@ -8,6 +8,13 @@ import './setupNetwork'
 configure({ asyncUtilTimeout: 5000 })
 
 beforeEach(() => {
+  // jsdom has no layout engine. AntD TextArea observes element size; actual
+  // responsive sizing is verified in the browser, not synthesized here.
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
   vi.stubEnv('VITE_AUTH_MODE', 'standalone')
   vi.stubEnv('VITE_LMS_CLIENT_ID', '')
   vi.stubEnv('VITE_LMS_REDIRECT_URI', '')
