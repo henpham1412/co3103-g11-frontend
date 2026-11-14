@@ -5,7 +5,6 @@ import { normalizeApiError } from '@/api/apiError'
 import { AuthLayout } from '@/components/layout/AuthLayout'
 import { useAuth } from '@/hooks/useAuth'
 import { isRecord } from '@/utils/typeGuards'
-import { ForgotPasswordNotice } from '../components/ForgotPasswordNotice'
 import { authRule, normalizeEmail, validateEmail, validateLoginPassword } from '../utils/authValidation'
 import { authFormErrors, type AuthField } from '../utils/authFormErrors'
 import { loginErrorMessage } from '../utils/authErrorPresentation'
@@ -27,7 +26,6 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const [loginContext] = useState(() => resolveLoginContext())
   const [feedback, setFeedback] = useState<{ message?: string; field?: AuthField }>()
-  const [forgotOpen, setForgotOpen] = useState(false)
   const errorRef = useRef<HTMLDivElement>(null)
   const active = useRef(false)
   const pending = useRef<AbortController | null>(null)
@@ -115,12 +113,11 @@ export default function LoginPage() {
           <Form.Item name="rememberMe" valuePropName="checked">
             <Checkbox>Remember me</Checkbox>
           </Form.Item>
-          <Button type="link" className="auth-forgot" onClick={() => setForgotOpen(true)}>Forgot password?</Button>
+          <Link className="auth-forgot" to="/forgot-password" state={{ from: returnDestination(navigationState.from) }}>Forgot password?</Link>
         </div>
         <Button type="primary" htmlType="submit" block loading={submitting} className="auth-submit">Sign In to LMS</Button>
       </Form>
       <p className="auth-footer">Don’t have an account? <Link to="/register" state={{ from: returnDestination(navigationState.from) }}>Create account</Link></p>
-      <ForgotPasswordNotice open={forgotOpen} onClose={() => setForgotOpen(false)} />
     </AuthLayout>
   )
 }

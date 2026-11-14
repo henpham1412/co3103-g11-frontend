@@ -5,20 +5,24 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import AppProviders from '@/app/providers'
 import LoginPage from '@/features/auth/pages/LoginPage'
 import RegisterPage from '@/features/auth/pages/RegisterPage'
+import ForgotPasswordPage from '@/features/auth/pages/ForgotPasswordPage'
+import ResetPasswordPage from '@/features/auth/pages/ResetPasswordPage'
 import { AuthContext, type AuthState } from '@/features/auth/context/AuthContext'
 import { authApi } from '@/api/authApi'
 import { authTheme } from '@/app/theme'
 import { authSession } from './fixtures/auth'
 import AuthTestMotion from './AuthTestMotion'
 
-export function renderAuthPage(path: '/login' | '/register', state?: unknown, options: { integration?: boolean; authState?: AuthState } = {}) {
+export function renderAuthPage(path: '/login' | '/register' | '/forgot-password' | '/reset-password', state?: unknown, options: { integration?: boolean; authState?: AuthState; search?: string; strict?: boolean } = {}) {
   localStorage.clear()
   sessionStorage.clear()
   const router = createMemoryRouter([
     { path: '/login', element: <LoginPage /> },
     { path: '/register', element: <RegisterPage /> },
+    { path: '/forgot-password', element: <ForgotPasswordPage /> },
+    { path: '/reset-password', element: <ResetPasswordPage /> },
     { path: '*', element: <p>Destination page</p> },
-  ], { initialEntries: ['/before', { pathname: path, state }], initialIndex: 1 })
+  ], { initialEntries: ['/before', { pathname: path, search: options.search, state }], initialIndex: 1 })
   const user = userEvent.setup()
   const content = <AuthTestMotion><RouterProvider router={router} /></AuthTestMotion>
   const view = render(
@@ -29,9 +33,10 @@ export function renderAuthPage(path: '/login' | '/register', state?: unknown, op
           login: async credentials => authSession(await authApi.login(credentials)),
           logout: async () => { },
           retrySessionVerification: async () => { },
+          refreshCurrentUser: signal => authApi.getCurrentUser(undefined, signal),
         }}>{content}</AuthContext></App>
       )}
-    </ConfigProvider>,
+    </ConfigProvider>, { reactStrictMode: options.strict },
   )
   return { ...view, user, router }
 }

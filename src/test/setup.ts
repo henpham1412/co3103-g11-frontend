@@ -1,14 +1,26 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 import './setupNetwork'
 
+// CI runners render these antd screens roughly three times slower than a development machine,
+// so the default one second per findBy*/waitFor* budget fails on work that is merely in flight.
+configure({ asyncUtilTimeout: 5000 })
+
 beforeEach(() => {
+  // jsdom has no layout engine. AntD TextArea observes element size; actual
+  // responsive sizing is verified in the browser, not synthesized here.
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
   vi.stubEnv('VITE_AUTH_MODE', 'standalone')
   vi.stubEnv('VITE_LMS_CLIENT_ID', '')
   vi.stubEnv('VITE_LMS_REDIRECT_URI', '')
   // jsdom has no media query evaluation or pseudo-element layout. AntD uses
   // these browser APIs for responsive forms and modal scrollbar measurement.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
     media: query,

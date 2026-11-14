@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ConfigProvider } from 'antd'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
@@ -17,6 +17,9 @@ import App from './App'
 import AppProviders from './providers'
 import { router as appRouter } from './router'
 
+// Cold lazy routes and session bootstrap can exceed 1s on two-CPU runners.
+const uiReady = { timeout: 5000 }
+
 it('cancels a pending login when leaving its page with the real provider and guards', async () => {
   localStorage.clear()
   sessionStorage.clear()
@@ -30,11 +33,11 @@ it('cancels a pending login when leaving its page with the real provider and gua
     </ConfigProvider>,
   )
   try {
-    await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
+    await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, uiReady)
     await fillAuthFields(user, { Email: validUser.email, Password: 'password' })
     await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
     await user.click(screen.getByRole('link', { name: 'Create account' }))
-    await screen.findByRole('heading', { name: 'Create Central Account' })
+    await screen.findByRole('heading', { name: 'Create Central Account' }, uiReady)
     await act(async () => { pending.resolve(loginResponse()) })
     expect(router.state.location.pathname).toBe('/register')
     expect(tokenStorage.getSession()).toBeNull()
@@ -63,13 +66,13 @@ it.each(['lazy import', 'render'])('recovers from a route %s failure without sho
   const view = render(
     <AuthContext value={{
       state: { status: 'authenticated', user: validUser, session: authSession() },
-      login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(),
+      login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(), refreshCurrentUser: vi.fn(),
     }}>
       <RouterProvider router={router} />
     </AuthContext>,
   )
   try {
-    expect(await screen.findByRole('heading', { name: 'Unable to load this page' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Unable to load this page' }, uiReady)).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Please reload the page to try again.')
     expect(screen.getByRole('button', { name: 'Reload page' })).toBeEnabled()
     expect(screen.queryByText(/Private diagnostic details/)).not.toBeInTheDocument()
@@ -93,7 +96,7 @@ it('shows an accessible fallback while a lazy route loads', async () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading authentication')
     expect(screen.queryByText('Loaded page')).not.toBeInTheDocument()
     await act(async () => { resolvePage({ Component: () => <p>Loaded page</p> }) })
-    expect(await screen.findByText('Loaded page')).toBeInTheDocument()
+    expect(await screen.findByText('Loaded page', {}, uiReady)).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   } finally {
     view.unmount()
@@ -106,7 +109,7 @@ it('keeps the workspace usable when the session expiry exceeds the date display 
   render(
     <AuthContext value={{
       state: { status: 'authenticated', user: validUser, session },
-      login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(),
+      login: vi.fn(), logout: vi.fn(), retrySessionVerification: vi.fn(), refreshCurrentUser: vi.fn(),
     }}>
       <App />
     </AuthContext>,
@@ -118,7 +121,7 @@ it('keeps the workspace usable when the session expiry exceeds the date display 
 it.each([
   { mode: 'standalone', rememberMe: false }, { mode: 'standalone', rememberMe: true },
   { mode: 'lms', rememberMe: false }, { mode: 'lms', rememberMe: true },
-])('registers, logs in, restores from wire identity and signs out ($mode, rememberMe=$rememberMe)', { timeout: 30000 }, async ({ mode, rememberMe }) => {
+])('registers, logs in, restores from wire identity and signs out ($mode, rememberMe=$rememberMe)', { timeout: 60000 }, async ({ mode, rememberMe }) => {
   vi.stubEnv('VITE_AUTH_MODE', mode)
   if (mode === 'lms') {
     vi.stubEnv('VITE_LMS_CLIENT_ID', 'g11-lms')
@@ -139,30 +142,31 @@ it.each([
     </ConfigProvider>,
   )
 
-  expect(await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, uiReady)).toBeInTheDocument()
   expect(router.state.location.pathname).toBe('/login')
   expect(router.state.location.state.from).toMatchObject({ pathname: '/', search: '?view=mine', hash: '#current' })
 
   await user.click(screen.getByRole('link', { name: 'Create account' }))
-  await screen.findByRole('heading', { name: 'Create Central Account' })
+  await screen.findByRole('heading', { name: 'Create Central Account' }, uiReady)
   await fillAuthFields(user, { 'Full Name': validUser.fullName, Email: validUser.email, Password: 'password', 'Confirm Password': 'password' })
   await user.click(screen.getByRole('button', { name: 'Create Account' }))
-  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })
+  await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, uiReady)
   expect(tokenStorage.getSession()).toBeNull()
   expect(screen.getByLabelText('Email')).toHaveValue(validUser.email)
   await fillAuthFields(user, { Password: 'password' })
   if (rememberMe) await user.click(screen.getByRole('checkbox', { name: 'Remember me' }))
   await user.click(screen.getByRole('button', { name: 'Sign In to LMS' }))
-  expect(await screen.findByRole('heading', { name: `Welcome, ${validUser.fullName}` })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: `Welcome, ${validUser.fullName}` }, uiReady)).toBeInTheDocument()
   expect(router.state.location).toMatchObject({ pathname: '/', search: '?view=mine', hash: '#current' })
   expect(received).toHaveBeenCalledExactlyOnceWith({ email: validUser.email, password: 'password',
     ...(mode === 'lms' ? { client_id: 'g11-lms', redirect_uri: 'http://localhost:5173/' } : {}),
   })
   let header = within(screen.getByRole('banner'))
   expect(header.getByRole('link', { name: 'G11 LMS home' })).toBeInTheDocument()
-  expect(header.getByText(validUser.fullName)).toBeInTheDocument()
-  expect(header.getByText(validUser.email)).toBeInTheDocument()
-  expect(header.getByText(validUser.status)).toBeInTheDocument()
+  expect(header.getByText(`${validUser.fullName} - Account`)).toBeInTheDocument()
+  expect(header.queryByText(validUser.email)).not.toBeInTheDocument()
+  expect(header.queryByText(validUser.status)).not.toBeInTheDocument()
+  expect(header.queryByRole('button', { name: 'Sign Out' })).not.toBeInTheDocument()
   const main = screen.getByRole('main')
   expect(main).toHaveTextContent('Session information')
   expect(main).toHaveTextContent('Platform status')
@@ -188,9 +192,9 @@ it.each([
       <AppProviders><AuthTestMotion><RouterProvider router={router} /></AuthTestMotion></AppProviders>
     </ConfigProvider>,
   )
-  await screen.findByRole('heading', { name: 'Welcome, Verified Student' })
+  await screen.findByRole('heading', { name: 'Welcome, Verified Student' }, uiReady)
   header = within(screen.getByRole('banner'))
-  expect(header.getByText('Verified Student')).toBeInTheDocument()
+  expect(header.getByText('Verified Student - Account')).toBeInTheDocument()
   expect(screen.queryByText('ADMINISTRATOR')).not.toBeInTheDocument()
   expect(tokenStorage.getSession()).toEqual(saved)
   expect(router.state.location).toMatchObject({ pathname: '/', search: '?view=mine', hash: '#current' })
@@ -198,11 +202,23 @@ it.each([
   await user.tab()
   expect(header.getByRole('link', { name: 'G11 LMS home' })).toHaveFocus()
   await user.tab()
-  expect(header.getByRole('button', { name: 'Sign Out' })).toHaveFocus()
-  await user.click(header.getByRole('button', { name: 'Sign Out' }))
-  expect(await screen.findByRole('heading', { name: 'Sign In to G11 LMS' })).toBeInTheDocument()
-  await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+  expect(header.getByRole('link', { name: 'Central Identity' })).toHaveFocus()
+  await user.tab()
+  expect(header.getByRole('button', { name: 'My profile' })).toHaveFocus()
+  await user.keyboard('{Enter}')
+  const profileItem = await screen.findByRole('menuitem', { name: 'Account Profile' }, uiReady)
+  await waitFor(() => expect(profileItem).toHaveFocus(), uiReady)
+  fireEvent.keyDown(profileItem, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13 })
+  await screen.findByRole('heading', { name: 'Personal Information' }, uiReady)
+  expect(router.state.location.pathname).toBe('/profile')
+  expect(screen.queryByRole('region', { name: 'Connected LMS Workspaces' })).not.toBeInTheDocument()
+  await user.click(header.getByRole('button', { name: 'My profile' }))
+  await user.click(await screen.findByRole('menuitem', { name: 'Sign Out' }, uiReady))
+  expect(await screen.findByRole('heading', { name: 'Sign In to G11 LMS' }, uiReady)).toBeInTheDocument()
+  await waitFor(() => expect(router.state.location.pathname).toBe('/login'), uiReady)
   expect(tokenStorage.getSession()).toBeNull()
+  expect(localStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
+  expect(sessionStorage.getItem(AUTH_SESSION_KEY)).toBeNull()
   expect(screen.queryByRole('button', { name: 'Sign Out' })).not.toBeInTheDocument()
   view.unmount()
   router.dispose()

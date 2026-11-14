@@ -1,3 +1,4 @@
+import ClassProgressPanel from "../components/ClassProgressPanel";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -29,7 +30,6 @@ import {
 } from "../api/classApi";
 import type { ClassCatalogItem, ClassOutlineResponse, MembershipStatus } from "../types";
 import "../class-detail.css";
-import ClassProgressPanel from "../components/ClassProgressPanel";
 
 interface ClassDetailResult {
   requestKey: string;
@@ -157,12 +157,14 @@ export default function ClassDetailPage() {
       setReadToken((token) => token + 1);
     } catch (error) {
       const code = getErrorCode(error);
-      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE") {
-        // Either code means the server disagrees with this snapshot, so it is re-read.
+      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE" || code === "ENROLLMENT_POLICY_CHANGED") {
+        // These conflicts mean the server disagrees with this snapshot, so it is re-read.
         if (code === "CLASS_FULL") {
           message.error("This class is full.");
-        } else {
+        } else if (code === "INVALID_MEMBERSHIP_STATE") {
           message.warning("Your membership already exists. Refreshing its current status.");
+        } else {
+          message.error(getErrorMessage(error));
         }
         setReadToken((token) => token + 1);
       } else {
@@ -187,6 +189,9 @@ export default function ClassDetailPage() {
       setReadToken((token) => token + 1);
     } catch (error) {
       message.error(getErrorMessage(error));
+      if (getErrorCode(error) === "INVALID_MEMBERSHIP_STATE") {
+        setReadToken((token) => token + 1);
+      }
     } finally {
       setJoining(false);
     }
@@ -361,13 +366,7 @@ export default function ClassDetailPage() {
               className="class-detail__tabs"
               items={[
                 { key: "syllabus", label: "Syllabus", children: syllabusContent },
-              {
-                key: "progress",
-                label: "Learning progress",
-                children: membershipStatus === "ACTIVE"
-                  ? <ClassProgressPanel classId={classId} />
-                  : <Alert type="info" showIcon title="Join this class to view learning progress" />,
-              },
+                { key: "progress", label: "Learning progress", children: membershipStatus === "ACTIVE" ? <ClassProgressPanel classId={classId} /> : <Alert type="info" title="Join this class to view learning progress" /> },
                 {
                   key: "information",
                   label: "Class information",

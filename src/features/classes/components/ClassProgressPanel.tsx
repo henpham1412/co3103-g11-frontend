@@ -1,98 +1,52 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Collapse, Empty, Progress, Spin, Tag, Typography } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import { normalizeApiError } from "@/api/apiError";
 import { getClassProgress, getResumeTarget } from "../api/progressApi";
-import { getAssessmentHistory } from "../api/quizApi";
-import type { ClassProgressResponse } from "../types";
+import { useProgressResource } from "../hooks/useProgressResource";
+import { resumePath } from "../progressModel";
 import "../progress.css";
 
 export default function ClassProgressPanel({ classId }: { classId: string }) {
   const navigate = useNavigate();
-  const [progress, setProgress] = useState<ClassProgressResponse>();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>();
-  const [resuming, setResuming] = useState(false);
-
-  function load() {
-    setLoading(true);
-    setError(undefined);
-    const controller = new AbortController();
-    getClassProgress(classId, controller.signal)
-      .then(setProgress)
-      .catch((cause: unknown) => {
-        if (!controller.signal.aborted) setError(normalizeApiError(cause).message);
-      })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }
-
-  useEffect(() => {
-    // The request state is synchronized asynchronously by the loader.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    const cleanup = load();
-    return cleanup;
-    // The loader is intentionally recreated only when the class changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId]);
-
+  const load = useCallback((signal: AbortSignal) => getClassProgress(classId, signal), [classId]);
+  const { data: progress, error, loading, retry } = useProgressResource(classId, load);
+  const pending = useRef<AbortController | undefined>(undefined);
+  const [action, setAction] = useState<{ classId: string; busy?: boolean; error?: string }>();
+  useEffect(() => () => pending.current?.abort(), [classId]);
   async function resume() {
-    setResuming(true);
+    pending.current?.abort();
+    const controller = new AbortController(); pending.current = controller;
+    setAction({ classId, busy: true });
     try {
-      const target = await getResumeTarget(classId);
-      if (target.target_type === "LESSON") navigate(`/classes/${classId}/lessons/${target.target_id}`);
-      else if (target.target_type === "QUIZ_ATTEMPT") {
-        const history = await getAssessmentHistory({ class_id: classId, type: "QUIZ" });
-        const assessment = history.items.find((item) => item.attempt_id === target.target_id);
-        if (!assessment || assessment.status !== "IN_PROGRESS") {
-          throw new Error("The in-progress quiz attempt is no longer available.");
-        }
-        const lesson = progress?.chapters
-          .flatMap((chapter) => chapter.lessons)
-          .find((candidate) => candidate.activities?.some((activity) => activity.activity_id === assessment.activity_id));
-        if (!lesson) throw new Error("The in-progress quiz is not available in the class outline.");
-        const activityId = assessment.activity_id;
-        const lessonId = lesson.lesson_id;
-        navigate(`/classes/${classId}/lessons/${lessonId}/activities/${activityId}`);
-      } else if (target.target_type === "CLASS_OUTLINE") {
-        setProgress((current) => current ? { ...current, resume_target: target } : current);
-      } else {
-        setError("The quiz resume target could not be resolved to a quiz activity.");
-      }
+      const target = await getResumeTarget(classId, controller.signal);
+      const current = target.target_type === "QUIZ_ATTEMPT" ? await getClassProgress(classId, controller.signal) : progress;
+      const path = current && resumePath(classId, current, target);
+      if (!path) throw new Error("The resume target is no longer available. Refresh learning progress and try again.");
+      if (!controller.signal.aborted) { setAction({ classId }); navigate(path); }
     } catch (cause) {
-      setError(normalizeApiError(cause).message);
-    } finally {
-      setResuming(false);
+      if (!controller.signal.aborted) setAction({ classId, error: normalizeApiError(cause).message });
     }
   }
-
   if (loading) return <div className="progress-loading" role="status"><Spin /> Loading progress…</div>;
-  if (error && !progress) return <Alert type="error" showIcon title="Could not load learning progress" description={error} />;
+  if (error) return <Alert type="error" showIcon title="Could not load learning progress" description={error} action={<Button onClick={retry}>Try again</Button>} />;
   if (!progress) return <Empty description="No progress is available." />;
-
-  return (
-    <section className="class-progress">
-      {error && <Alert type="warning" showIcon title="Progress action unavailable" description={error} />}
-      <Card className="class-progress__summary">
-        <div className="class-progress__summary-row">
-          <div><Typography.Title level={4}>Learning progress</Typography.Title><Typography.Text type="secondary">{progress.completed_lessons} of {progress.eligible_lessons} lessons complete</Typography.Text></div>
-          <Tag color={progress.status === "COMPLETED" ? "green" : "blue"}>{progress.status === "COMPLETED" ? "Completed" : "In progress"}</Tag>
-        </div>
-        <Progress percent={progress.progress_percentage} />
-        <Button type="primary" onClick={resume} loading={resuming} disabled={progress.status === "COMPLETED" && !progress.resume_target}>Continue learning</Button>
-        {progress.resume_target?.target_type === "CLASS_OUTLINE" && <Typography.Text type="secondary">No unfinished learning target remains. Review the class outline.</Typography.Text>}
-      </Card>
-      <Collapse items={progress.chapters.map((chapter) => ({
-        key: chapter.chapter_id,
-        label: <span>{chapter.title} <Typography.Text type="secondary">({chapter.completed_lessons}/{chapter.eligible_lessons})</Typography.Text></span>,
-        children: chapter.lessons.length > 0 ? chapter.lessons.map((lesson) => (
-          <div className="class-progress__lesson" key={lesson.lesson_id}>
-            <span className={lesson.completed ? "is-complete" : ""}>{lesson.completed ? "✓" : "○"}</span>
-            <Link to={`/classes/${classId}/lessons/${lesson.lesson_id}`}>{lesson.title}</Link>
-            {lesson.activities?.map((activity) => <Tag key={activity.activity_id}>{activity.title}: {activity.outcome ?? activity.status ?? "Not started"}</Tag>)}
-          </div>
-        )) : <Empty description="No eligible lessons" />,
-      }))} />
-    </section>
-  );
+  return <section className="class-progress">
+    {action?.classId === classId && action.error && <Alert type="warning" title="Progress action unavailable" description={action.error} />}
+    <Card className="class-progress__summary">
+      <Typography.Title level={4}>Learning progress</Typography.Title>
+      <Typography.Text>{progress.completed_lessons} of {progress.eligible_lessons} lessons complete</Typography.Text>
+      <Tag>{progress.status === "COMPLETED" ? "Completed" : "In progress"}</Tag>
+      <Progress percent={progress.progress_percentage} />
+      <Button type="primary" onClick={() => void resume()} loading={action?.classId === classId && action.busy}>Continue learning</Button>
+      {progress.resume_target.target_type === "CLASS_OUTLINE" && <Typography.Text>No unfinished learning target remains. Review the class outline.</Typography.Text>}
+    </Card>
+    {progress.chapters.length === 0 ? <Empty description="No eligible lessons" /> : <Collapse items={progress.chapters.map(chapter => ({
+      key: chapter.chapter_id, label: `${chapter.title} (${chapter.completed_lessons}/${chapter.eligible_lessons})`,
+      children: chapter.lessons.map(lesson => <div className="class-progress__lesson" key={lesson.lesson_id}>
+        <span>{lesson.completed ? "✓" : "○"}</span><Link to={`/classes/${classId}/lessons/${lesson.lesson_id}`}>{lesson.title}</Link>
+        {lesson.assessment_statuses.map(item => <Tag key={item.activity_id}>{item.title}: {item.status === "IN_PROGRESS" ? "In progress" : item.status === "SUBMITTED" ? "Submitted" : "Not started"}</Tag>)}
+      </div>)
+    }))} />}
+  </section>;
 }

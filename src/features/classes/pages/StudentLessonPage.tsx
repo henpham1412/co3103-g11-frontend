@@ -1,3 +1,5 @@
+import LessonCompletionControl from "../components/LessonCompletionControl";
+import { recordLastVisit } from "../api/progressApi";
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Empty, Spin, Tag, Typography } from "antd";
 import { ArrowLeftOutlined, ArrowRightOutlined, FileTextOutlined, LinkOutlined, VideoCameraOutlined } from "@ant-design/icons";
@@ -14,7 +16,6 @@ import {
 } from "../api/classApi";
 import type { ClassCatalogItem, ClassOutlineLesson, ClassOutlineMaterial, ClassOutlineResponse } from "../types";
 import { getLessonNavigation, getMaterialDisplay } from "../student-lesson-model";
-import { getClassProgress, markLessonComplete, recordLastVisit, unmarkLessonComplete } from "../api/progressApi";
 import "../student-lesson.css";
 
 interface StudentLessonPageData {
@@ -31,9 +32,7 @@ export default function StudentLessonPage() {
   const { classId = "", lessonId = "" } = useParams();
   const requestKey = `${classId}:${lessonId}`;
   const [result, setResult] = useState<StudentLessonPageData>();
-  const [completion, setCompletion] = useState<boolean>();
-  const [completionBusy, setCompletionBusy] = useState(false);
-  const [completionError, setCompletionError] = useState<string>();
+  const [visitError, setVisitError] = useState<{ key: string; message: string }>();
   const loading = result?.requestKey !== requestKey;
   const page = loading ? undefined : result;
   const navigation = getLessonNavigation(page?.outline, lessonId);
@@ -50,11 +49,9 @@ export default function StudentLessonPage() {
       .then(([classItem, outline, lesson, materials]) => {
         if (!controller.signal.aborted) {
           setResult({ requestKey, classItem, outline, lesson, materials });
-          void recordLastVisit(classId, lessonId);
-          void getClassProgress(classId, controller.signal).then((progress) => {
-            const item = progress.chapters.flatMap((chapter) => chapter.lessons).find((candidate) => candidate.lesson_id === lessonId);
-            if (!controller.signal.aborted) setCompletion(item?.completed ?? false);
-          }).catch(() => undefined);
+          if (classItem.status === "ACTIVE") void recordLastVisit(classId, lessonId).catch((cause: unknown) => {
+            if (!controller.signal.aborted) setVisitError({ key: requestKey, message: normalizeApiError(cause).message });
+          });
         }
       })
       .catch((cause: unknown) => {
@@ -64,31 +61,6 @@ export default function StudentLessonPage() {
       });
     return () => controller.abort();
   }, [classId, lessonId, requestKey]);
-
-  async function toggleCompletion() {
-    if (completion === undefined || completionBusy) return;
-    setCompletionBusy(true);
-    setCompletionError(undefined);
-    try {
-      if (completion) await unmarkLessonComplete(classId, lessonId);
-      else await markLessonComplete(classId, lessonId);
-      const updatedCompletion = !completion;
-      setCompletion(updatedCompletion);
-      try {
-        const progress = await getClassProgress(classId);
-        const item = progress.chapters.flatMap((chapter) => chapter.lessons).find((candidate) => candidate.lesson_id === lessonId);
-        setCompletion(item?.completed ?? updatedCompletion);
-      } catch (cause) {
-        const failure = normalizeApiError(cause);
-        setCompletionError(`Completion was saved, but progress could not be refreshed: ${failure.message}`);
-      }
-    } catch (cause) {
-      const failure = normalizeApiError(cause);
-      setCompletionError(failure.message);
-    } finally {
-      setCompletionBusy(false);
-    }
-  }
 
   let content;
   if (loading) {
@@ -169,14 +141,8 @@ export default function StudentLessonPage() {
           )}
         </section>
 
-        <div className="student-lesson__progress-note">
-          {completionError && <Alert type="warning" showIcon title="Could not update lesson completion" description={completionError} />}
-          <Button type={completion ? "default" : "primary"} loading={completionBusy} disabled={completion === undefined} onClick={() => void toggleCompletion()}>
-            {completion ? "Mark as incomplete" : "Mark lesson as complete"}
-          </Button>
-          <Typography.Text type="secondary">Opening a lesson does not mark it complete.</Typography.Text>
-          <Typography.Text type="secondary">It records your last visit.</Typography.Text>
-        </div>
+        {visitError?.key === requestKey && <Alert type="warning" title="Last visit could not be recorded" description={visitError.message} />}
+        <LessonCompletionControl key={requestKey} classId={classId} lessonId={lessonId} archived={page.classItem.status === "ARCHIVED"} />
 
         <nav className="student-lesson__lesson-nav" aria-label="Lesson navigation">
           {navigation.previous ? (
@@ -205,7 +171,6 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
   const { message } = App.useApp();
   const [downloading, setDownloading] = useState(false);
   const display = getMaterialDisplay(material);
-  const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
   const icon = material.material_type === "VIDEO" ? <VideoCameraOutlined />
     : material.material_type === "URL" ? <LinkOutlined /> : <FileTextOutlined />;
 
@@ -216,10 +181,7 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
         <Typography.Text strong>{material.title}</Typography.Text>
         {display === "text" && <div className="student-lesson__prose">{material.content}</div>}
         {display === "link" && <a href={material.file_url ?? undefined} target="_blank" rel="noreferrer">Open external resource</a>}
-        {display === "file" && (demoMode ? (
-          // The demo store mints an asset key but holds no bytes, so there is nothing to fetch.
-          <Typography.Text type="secondary">Stored files are only served by the live LMS API, not by demo mode.</Typography.Text>
-        ) : (
+        {display === "file" && (
           <Button
             type="link"
             loading={downloading}
@@ -244,7 +206,7 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
           >
             Download material
           </Button>
-        ))}
+        )}
         {display === "unavailable" && <Typography.Text type="secondary">This material has no content or file to open.</Typography.Text>}
       </div>
       <Tag>{material.material_type}</Tag>

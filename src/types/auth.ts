@@ -2,6 +2,9 @@ export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'
 
 export type LmsRole = 'ADMINISTRATOR' | 'TUTOR' | 'STUDENT'
 
+export interface ForgotPasswordRequest { email: string }
+export interface ResetPasswordRequest { token: string; newPassword: string }
+
 export interface RegisterRequest {
   email: string
   password: string

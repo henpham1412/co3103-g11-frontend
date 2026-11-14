@@ -31,7 +31,6 @@ import {
 import type {
   ClassCatalogItem,
   ClassCatalogResponse,
-  CurrentMembership,
   EnrollmentPolicy,
   MembershipStatus,
 } from "../types";
@@ -72,7 +71,6 @@ export default function ClassCatalogPage() {
   const [membershipResult, setMembershipResult] = useState<{
     key: string;
     statuses?: Record<string, MembershipStatus>;
-    memberships?: Record<string, CurrentMembership>;
     error?: string;
   } | null>(null);
   // Keyed by class and operation, so finishing one request can neither re-enable another
@@ -81,9 +79,6 @@ export default function ClassCatalogPage() {
 
   const membershipStatuses = membershipResult?.key === membershipRequestKey
     ? membershipResult.statuses
-    : undefined;
-  const memberships = membershipResult?.key === membershipRequestKey
-    ? membershipResult.memberships
     : undefined;
   const membershipStatusAvailable = membershipStatuses !== undefined;
   const membershipStatusError = membershipResult?.key === membershipRequestKey
@@ -162,7 +157,6 @@ export default function ClassCatalogPage() {
           statuses: Object.fromEntries(
             memberships.map(({ class_id, status }) => [class_id, status]),
           ),
-          memberships: Object.fromEntries(memberships.map((membership) => [membership.class_id, membership])),
         });
       })
       .catch((requestError: unknown) => {
@@ -195,12 +189,14 @@ export default function ClassCatalogPage() {
       const code = isAxiosError<{ code?: string }>(requestError)
         ? requestError.response?.data?.code
         : undefined;
-      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE") {
-        // Either code means the server state differs from this page, so it is re-read.
+      if (code === "CLASS_FULL" || code === "INVALID_MEMBERSHIP_STATE" || code === "ENROLLMENT_POLICY_CHANGED") {
+        // These conflicts mean the server state differs from this page, so it is re-read.
         if (code === "CLASS_FULL") {
           message.error("This class is full.");
-        } else {
+        } else if (code === "INVALID_MEMBERSHIP_STATE") {
           message.warning("Your membership already exists. Refreshing its current status.");
+        } else {
+          message.error(getErrorMessage(requestError));
         }
         setReadToken((token) => token + 1);
       } else {
@@ -230,6 +226,10 @@ export default function ClassCatalogPage() {
       setReadToken((token) => token + 1);
     } catch (requestError) {
       message.error(getErrorMessage(requestError));
+      if (isAxiosError<{ code?: string }>(requestError)
+        && requestError.response?.data?.code === "INVALID_MEMBERSHIP_STATE") {
+        setReadToken((token) => token + 1);
+      }
     } finally {
       endOperation(classId, operation);
     }
@@ -363,14 +363,7 @@ export default function ClassCatalogPage() {
                     className="class-catalog__card-column"
                   >
                     <ClassCard
-                      classItem={{
-                        ...classItem,
-                        completed_lessons: memberships?.[classItem.class_id]?.completed_lessons ?? classItem.completed_lessons,
-                        eligible_lessons: memberships?.[classItem.class_id]?.eligible_lessons ?? classItem.eligible_lessons,
-                        progress_percentage: memberships?.[classItem.class_id]?.progress_percentage ?? classItem.progress_percentage,
-                        progress_status: memberships?.[classItem.class_id]?.progress_status ?? classItem.progress_status,
-                        resume_target: memberships?.[classItem.class_id]?.resume_target ?? classItem.resume_target,
-                      }}
+                      classItem={classItem}
                       membershipStatus={membershipStatuses?.[classItem.class_id]}
                       membershipStatusAvailable={membershipStatusAvailable}
                       membershipStatusFailed={membershipStatusError !== undefined}
@@ -504,28 +497,22 @@ function ClassCard({
         </div>
 
         {isEnrolled || isPending ? (
-          <>
-            {isEnrolled && <>
-              {classItem.progress_percentage != null && <Typography.Text type="secondary">{classItem.progress_percentage}% complete</Typography.Text>}
-              <Link to={`/classes/${classItem.class_id}/progress`}><Button block type="primary">{classItem.resume_target ? "Continue learning" : "View progress"}</Button></Link>
-            </>}
-            <Popconfirm
-              title={isEnrolled ? "Leave this class?" : "Withdraw this join request?"}
-              description={
-                isEnrolled
-                  ? "You will lose access to this class's learning content."
-                  : "You can submit a new request later."
-              }
-              okText={isEnrolled ? "Leave" : "Withdraw"}
-              cancelText="Keep"
-              disabled={busy}
-              onConfirm={() => onMembershipEnd(isEnrolled ? "ACTIVE" : "PENDING")}
-            >
-              <Button block loading={endPending} disabled={busy}>
-                {isEnrolled ? "Leave class" : "Withdraw request"}
-              </Button>
-            </Popconfirm>
-          </>
+          <Popconfirm
+            title={isEnrolled ? "Leave this class?" : "Withdraw your join request?"}
+            description={
+              isEnrolled
+                ? "You will lose access to this class's learning content."
+                : "You can submit a new request later."
+            }
+            okText={isEnrolled ? "Leave" : "Withdraw"}
+            cancelText="Keep"
+            disabled={busy}
+            onConfirm={() => onMembershipEnd(isEnrolled ? "ACTIVE" : "PENDING")}
+          >
+            <Button block loading={endPending} disabled={busy}>
+              {isEnrolled ? "Leave class" : "Withdraw request"}
+            </Button>
+          </Popconfirm>
         ) : (
           <Button
             block

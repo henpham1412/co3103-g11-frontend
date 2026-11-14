@@ -27,6 +27,10 @@ export interface TutorMember {
   class_member_id: string;
   class_id: string;
   student_id: string;
+  // Absent on the current ClassMemberResponse. When LMS adds them, use the same
+  // names as the class-detail tutor object and lms_user_access: full_name, email.
+  full_name?: string | null;
+  email?: string | null;
   status: MembershipStatus;
   requested_at: string | null;
   joined_at: string | null;
@@ -79,45 +83,6 @@ export interface TutorLesson {
   activities?: ClassOutlineActivity[];
 }
 
-export interface TutorProgressMember {
-  class_member_id: string;
-  student_id: string;
-  student_name?: string;
-  completed_lessons: number;
-  eligible_lessons: number;
-  progress_percentage: number;
-  status: "IN_PROGRESS" | "COMPLETED";
-}
-
-export interface TutorProgressResponse {
-  class_id: string;
-  members: TutorProgressMember[];
-  page?: number;
-  size?: number;
-  total_items?: number;
-  total_pages?: number;
-}
-
-export interface TutorMemberProgressResponse {
-  class_member_id: string;
-  student_id: string;
-  student_name?: string;
-  completed_lessons: number;
-  eligible_lessons: number;
-  progress_percentage: number;
-  status: "IN_PROGRESS" | "COMPLETED";
-  chapters: import("../classes/types").ProgressChapter[];
-  mastery?: Array<{ skill_topic: string; mastery: number | null }>;
-  assessment_outcomes?: Array<{
-    activity_id: string;
-    activity_title: string;
-    activity_type: "QUIZ" | "ASSIGNMENT";
-    status: string;
-    score?: number | null;
-    feedback?: string | null;
-  }>;
-}
-
 export interface TutorMaterial {
   material_id: string;
   lesson_id?: string;
@@ -127,4 +92,29 @@ export interface TutorMaterial {
   content: string | null;
   sequence_order: number;
   status: ContentVisibility;
+}
+
+export interface TutorProgressMember {
+  class_member_id: string;
+  student_id: string;
+  student_name: string | null;
+  completed_lessons: number;
+  eligible_lessons: number;
+  progress_percentage: number;
+  status: import("../classes/types").LearningProgressStatus;
+}
+export interface TutorProgressResponse { class_id: string; members: TutorProgressMember[] }
+export type MasteryLevel = "WEAK" | "DEVELOPING" | "SUFFICIENT";
+export interface TutorMemberProgressResponse {
+  class_id: string;
+  class_member_id: string;
+  student_id: string;
+  membership_status: "ACTIVE";
+  completed_lessons: number;
+  eligible_lessons: number;
+  progress_percentage: number;
+  status: import("../classes/types").LearningProgressStatus;
+  chapters: import("../classes/types").ProgressChapter[];
+  assessment_outcomes: import("../classes/quiz-types").AssessmentHistoryItem[];
+  skill_mastery: { skill_topic_id: string; name: string; level: MasteryLevel | null }[];
 }

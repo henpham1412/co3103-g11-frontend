@@ -16,11 +16,6 @@ export interface ClassCatalogItem {
   };
   active_member_count: number;
   max_capacity: number | null;
-  completed_lessons?: number;
-  eligible_lessons?: number;
-  progress_percentage?: number;
-  progress_status?: LearningProgressStatus;
-  resume_target?: ResumeTarget;
 }
 
 export interface ClassCatalogResponse {
@@ -42,11 +37,16 @@ export interface MembershipActionResponse {
 export interface CurrentMembership {
   class_id: string;
   status: MembershipStatus;
-  completed_lessons?: number;
-  eligible_lessons?: number;
-  progress_percentage?: number;
-  progress_status?: LearningProgressStatus;
-  resume_target?: ResumeTarget;
+}
+
+// /me/classes returns class summaries, not the membership mutation response.
+// Only ACTIVE and PENDING memberships are included by this endpoint.
+export interface CurrentMembershipPage {
+  items: { class_id: string; membership_status: "ACTIVE" | "PENDING" }[];
+  page: number;
+  size: number;
+  total_items: number;
+  total_pages: number;
 }
 export interface ClassOutlineResponse {
   class_id: string;
@@ -99,28 +99,42 @@ export interface ClassOutlineLesson {
 }
 
 export type LearningProgressStatus = "IN_PROGRESS" | "COMPLETED";
-export type ResumeTargetType = "LESSON" | "QUIZ_ATTEMPT" | "CLASS_OUTLINE";
-
-export interface ProgressActivity extends ClassOutlineActivity {
-  outcome?: string | null;
-  score?: number | null;
+export interface ProgressAttempt {
+  attempt_id: string;
+  attempt_number: number;
+  status: "IN_PROGRESS" | "SUBMITTED";
+  started_at: string;
+  submitted_at: string | null;
+  score: number | null;
 }
-
-export interface ProgressLesson extends ClassOutlineLesson {
+export interface AssessmentStatus {
+  activity_id: string;
+  title: string;
+  activity_type: ActivityType;
+  status: "NOT_STARTED" | "IN_PROGRESS" | "SUBMITTED";
+  attempts: ProgressAttempt[];
+}
+export interface ProgressLesson {
+  lesson_id: string;
+  title: string;
+  sequence_order: number;
   completed: boolean;
-  completed_at?: string | null;
-  activities?: ProgressActivity[];
+  marked_at: string | null;
+  assessment_statuses: AssessmentStatus[];
 }
-
 export interface ProgressChapter {
   chapter_id: string;
   title: string;
-  sequence_order: number;
   completed_lessons: number;
   eligible_lessons: number;
+  progress_percentage: number;
   lessons: ProgressLesson[];
 }
-
+export interface ResumeTarget {
+  target_type: "LESSON" | "QUIZ_ATTEMPT" | "CLASS_OUTLINE";
+  target_id: string;
+  reason: string;
+}
 export interface ClassProgressResponse {
   class_id: string;
   completed_lessons: number;
@@ -128,13 +142,5 @@ export interface ClassProgressResponse {
   progress_percentage: number;
   status: LearningProgressStatus;
   chapters: ProgressChapter[];
-  resume_target?: ResumeTarget;
-}
-
-export interface ResumeTarget {
-  target_type: ResumeTargetType;
-  target_id: string;
-  activity_id?: string;
-  lesson_id?: string;
-  reason?: string;
+  resume_target: ResumeTarget;
 }

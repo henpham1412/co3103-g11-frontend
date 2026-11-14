@@ -6,7 +6,7 @@ import { authApi } from '@/api/authApi'
 import { installAuthInterceptors, type SessionSnapshot } from '@/api/authInterceptors'
 import { createAuthSync } from '@/features/auth/services/authSync'
 import { AUTH_SESSION_VERSION, tokenStorage } from '@/features/auth/services/tokenStorage'
-import type { AuthSession, LoginCredentials } from '@/types/auth'
+import type { AuthSession, LoginCredentials, User } from '@/types/auth'
 import { calculateSessionExpiry } from '@/utils/sessionExpiry'
 import { AuthContext, type LogoutReason } from './AuthContext'
 import { authReducer } from './authReducer'
@@ -20,8 +20,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const sync = useRef<ReturnType<typeof createAuthSync> | null>(null)
   const verify = useRef<(() => Promise<void>) | null>(null)
+  const verifiedSessionId = useRef<string | null>(null)
+  const profileController = useRef<AbortController | null>(null)
+  const profileSequence = useRef(0)
 
   const beginOperation = useCallback(() => {
+    verifiedSessionId.current = null
+    profileSequence.current += 1
+    profileController.current?.abort()
+    profileController.current = null
     snapshot.current.generation += 1
     controller.current?.abort()
     controller.current = null
@@ -98,6 +105,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         ...session, userId: user.userId, email: user.email, fullName: user.fullName, status: user.status,
       }
       snapshot.current.session = verifiedSession
+      verifiedSessionId.current = verifiedSession.sessionId
       dispatch({ type: 'authenticated', user, session: verifiedSession })
     } catch (error) {
       if (!isCurrent(generation)) return
@@ -143,6 +151,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         })
       }
       snapshot.current.session = session
+      verifiedSessionId.current = session.sessionId
       scheduleExpiry(session, generation)
       if (!isCurrent(generation)) throw new CanceledError('The authentication session has expired.')
       dispatch({ type: 'authenticated', user: { userId, email, fullName, status }, session })
@@ -158,6 +167,48 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const logout = useCallback(async (reason: LogoutReason = 'signed-out') => {
     purgeSession(reason, true, true)
   }, [purgeSession])
+
+  const refreshCurrentUser = useCallback(async (signal?: AbortSignal): Promise<User> => {
+    const { session, generation } = snapshot.current
+    if (!mounted.current || !session || verifiedSessionId.current !== session.sessionId || signal?.aborted) {
+      throw normalizeApiError(new CanceledError(), '/users/me')
+    }
+    if (session.expiresAt <= Date.now()) {
+      purgeSession('expired')
+      throw normalizeApiError(new CanceledError(), '/users/me')
+    }
+    profileController.current?.abort()
+    const pending = new AbortController()
+    profileController.current = pending
+    const sequence = ++profileSequence.current
+    const cancel = () => pending.abort()
+    signal?.addEventListener('abort', cancel, { once: true })
+    const current = () => isCurrent(generation) && sequence === profileSequence.current
+      && !pending.signal.aborted && snapshot.current.session?.sessionId === session.sessionId
+    try {
+      const user = await authApi.getCurrentUser(session.accessToken, pending.signal)
+      if (!current()) throw new CanceledError()
+      if (session.expiresAt <= Date.now()) {
+        purgeSession('expired')
+        throw new CanceledError()
+      }
+      if (user.userId !== session.userId) throw new ApiError({
+        status: 502, error: 'Invalid Response', code: 'INVALID_AUTH_RESPONSE',
+        message: 'Unable to verify your profile.', path: '/users/me', timestamp: new Date().toISOString(),
+      })
+      const updated = { ...session, email: user.email, fullName: user.fullName, status: user.status }
+      snapshot.current.session = updated
+      dispatch({ type: 'authenticated', user, session: updated })
+      return user
+    } catch (error) {
+      const problem = normalizeApiError(error, '/users/me')
+      if (current() && (problem.code === 'ACCOUNT_NOT_ACTIVE' || problem.status === 401)) purgeSession('unauthorized')
+      throw problem
+    } finally {
+      signal?.removeEventListener('abort', cancel)
+      if (profileController.current === pending) profileController.current = null
+    }
+  }, [isCurrent, purgeSession])
 
   useLayoutEffect(() => {
     mounted.current = true
@@ -213,8 +264,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [beginOperation, isCurrent, message, purgeSession, retrySessionVerification])
 
-  const value = useMemo(() => ({ state, login, logout, retrySessionVerification }),
-    [state, login, logout, retrySessionVerification])
+  const value = useMemo(() => ({ state, login, logout, retrySessionVerification, refreshCurrentUser }),
+    [state, login, logout, retrySessionVerification, refreshCurrentUser])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
