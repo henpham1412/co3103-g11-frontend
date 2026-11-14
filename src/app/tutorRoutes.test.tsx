@@ -11,7 +11,9 @@ import TutorQuizPage from '@/features/tutor-classes/pages/TutorQuizPage'
 import StudentLessonPage from '@/features/classes/pages/StudentLessonPage'
 import ClassActivityPage from '@/features/classes/pages/ClassActivityPage'
 import AssessmentHistoryPage from '@/features/classes/pages/AssessmentHistoryPage'
-import TutorWorkspaceSectionPage from './TutorWorkspaceSectionPage'
+import DiscussionBoardPage from '@/features/discussions/pages/DiscussionBoardPage'
+import DiscussionHubPage from '@/features/discussions/pages/DiscussionHubPage'
+import DiscussionThreadPage from '@/features/discussions/pages/DiscussionThreadPage'
 import { router } from './router'
 
 afterAll(() => router.dispose())
@@ -25,7 +27,9 @@ describe('merged FE-4/FE-5/FE-6 routes', () => {
     ['/tutor/classes/class-123/content', TutorContentManagementPage],
     ['/tutor/classes/class-123/content/quiz/new', TutorQuizPage],
     ['/tutor/classes/class-123/content/quiz/activity-123', TutorQuizPage],
-    ['/tutor/discussion', TutorWorkspaceSectionPage],
+    ['/tutor/discussion', DiscussionHubPage],
+    ['/tutor/classes/class-123/discussions', DiscussionBoardPage],
+    ['/tutor/classes/class-123/discussions/discussion-123', DiscussionThreadPage],
   ])('keeps %s under the shared authentication and tutor guards', (path, component) => {
     const matches = matchRoutes(router.routes, path as string)!
     const types = matches.map(({ route }) => isValidElement(route.element) ? route.element.type : null)
@@ -38,6 +42,9 @@ describe('merged FE-4/FE-5/FE-6 routes', () => {
     ['/classes/class-123/lessons/lesson-123', StudentLessonPage],
     ['/classes/class-123/lessons/lesson-123/activities/activity-123', ClassActivityPage],
     ['/assessment-history', AssessmentHistoryPage],
+    ['/discussion', DiscussionHubPage],
+    ['/classes/class-123/discussions', DiscussionBoardPage],
+    ['/classes/class-123/discussions/discussion-123', DiscussionThreadPage],
   ])('keeps %s on the existing student route', (path, component) => {
     const matches = matchRoutes(router.routes, path as string)!
     const types = matches.map(({ route }) => isValidElement(route.element) ? route.element.type : null)

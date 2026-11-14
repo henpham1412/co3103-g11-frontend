@@ -7,6 +7,7 @@ const pureTests = [
   'src/api/passwordRecoveryMapping.test.ts',
   'src/features/auth/utils/*.test.ts', 'src/utils/*.test.ts',
   'src/features/classes/*.test.ts',
+  'src/features/discussions/utils/*.test.ts',
   'src/api/apiError.test.ts', 'src/api/clients.test.ts', 'src/api/authMapping.test.ts', 'src/app/theme.test.ts',
 ]
 const storageTests = ['src/features/auth/services/*.test.ts']

@@ -15,7 +15,7 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { ArrowLeftOutlined, CheckCircleOutlined, TeamOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, CheckCircleOutlined, MessageOutlined, TeamOutlined } from "@ant-design/icons";
 import { isAxiosError } from "axios";
 import { Link, useParams } from "react-router-dom";
 
@@ -361,6 +361,12 @@ export default function ClassDetailPage() {
                 </Button>
               )}
             </div>
+
+            {membershipStatus === "ACTIVE" && (
+              <Link className="class-detail__discussions" to={`/classes/${classId}/discussions`}>
+                <Button icon={<MessageOutlined />}>Class discussions</Button>
+              </Link>
+            )}
 
             <Tabs
               className="class-detail__tabs"

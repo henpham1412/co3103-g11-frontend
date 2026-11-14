@@ -38,3 +38,4 @@
 .class-detail__empty { margin-top: 48px; }
 @media (max-width: 900px) { .class-detail__syllabus-layout { grid-template-columns: 1fr; } .class-detail__side-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 680px) { .class-detail-page { padding: 20px 16px; } .class-detail__hero-top { grid-template-columns: 1fr; } .class-detail__progress-wrap { align-items: stretch; } .class-detail__syllabus-layout, .class-detail__side-panels { grid-template-columns: 1fr; } .class-detail__section-heading { align-items: flex-start; flex-direction: column; } }
+.class-detail__discussions { display: inline-block; margin: 12px 0 0; }
