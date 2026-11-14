@@ -5,6 +5,7 @@ import TutorProgressPanel from './TutorProgressPanel'
 import { ApiError } from '@/api/apiError'
 const api = vi.hoisted(() => ({ getTutorClassProgress: vi.fn(), getTutorMemberProgress: vi.fn() }))
 vi.mock('../api/tutorClassApi', () => api)
+vi.mock('../api/tutorMasteryApi', () => ({ getTutorMastery: vi.fn(async (classId: string, memberId: string) => ({ class_id: classId, class_member_id: memberId, items: [] })) }))
 beforeEach(() => {
   api.getTutorClassProgress.mockReset().mockImplementation(async (id: string) => tutorProgress(id));
   api.getTutorMemberProgress.mockReset().mockImplementation(async (id: string, member: string) => memberProgress(member, id));
