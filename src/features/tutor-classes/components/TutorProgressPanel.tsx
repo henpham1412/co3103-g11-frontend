@@ -2,11 +2,19 @@ import { useCallback, useState } from "react";
 import { Alert, Button, Card, Collapse, Empty, Progress, Spin, Tag, Typography } from "antd";
 import { getTutorClassProgress, getTutorMemberProgress } from "../api/tutorClassApi";
 import { useProgressResource } from "../../classes/hooks/useProgressResource";
+import TutorMasterySection from "./TutorMasterySection";
 
 export default function TutorProgressPanel({ classId, revision }: { classId: string; revision: number }) {
   const load = useCallback((signal: AbortSignal) => getTutorClassProgress(classId, signal), [classId]);
-  const { data, loading, error, retry } = useProgressResource(`${classId}:${revision}`, load);
+  const [accessRevision, setAccessRevision] = useState(0);
+  const { data, loading, error, retry } = useProgressResource(`${classId}:${revision}:${accessRevision}`, load);
   const [selection, setSelection] = useState<{ classId: string; memberId: string }>();
+  const [accessNotice, setAccessNotice] = useState<{ classId: string; revision: number; message: string }>();
+  const accessRejected = useCallback((message: string) => {
+    setSelection(undefined);
+    setAccessNotice({ classId, revision, message });
+    setAccessRevision(value => value + 1);
+  }, [classId, revision]);
   const selected = selection?.classId === classId && data?.members.some(m => m.class_member_id === selection.memberId) ? selection.memberId : undefined;
   if (loading) return <div role="status"><Spin /> Loading member progress…</div>;
   if (error) return <Alert type="error" showIcon title="Could not load member progress" description={error} action={<Button onClick={retry}>Try again</Button>} />;
@@ -14,13 +22,14 @@ export default function TutorProgressPanel({ classId, revision }: { classId: str
   return <section aria-label="Tutor learning progress">
     <Typography.Title level={3}>Learning progress</Typography.Title>
     <Typography.Paragraph>Progress is shown for active members only. Historical records are retained.</Typography.Paragraph>
-    {data.members.map(member => <Button key={member.class_member_id} onClick={() => setSelection({ classId, memberId: member.class_member_id })}>
+    {accessNotice?.classId === classId && accessNotice.revision === revision && <Alert type="warning" showIcon title="Student mastery is unavailable" description={accessNotice.message} />}
+    {data.members.map(member => <Button key={member.class_member_id} onClick={() => { setAccessNotice(undefined); setSelection({ classId, memberId: member.class_member_id }); }}>
       {member.student_name ?? `Student ${member.student_id}`} · {member.completed_lessons}/{member.eligible_lessons} lessons
     </Button>)}
-    {selected && <MemberProgress key={`${classId}:${selected}:${revision}`} classId={classId} memberId={selected} revision={revision} />}
+    {selected && <MemberProgress key={`${classId}:${selected}:${revision}`} classId={classId} memberId={selected} revision={revision} onAccessRejected={accessRejected} />}
   </section>;
 }
-function MemberProgress({ classId, memberId, revision }: { classId: string; memberId: string; revision: number }) {
+function MemberProgress({ classId, memberId, revision, onAccessRejected }: { classId: string; memberId: string; revision: number; onAccessRejected: (message: string) => void }) {
   const load = useCallback((signal: AbortSignal) => getTutorMemberProgress(classId, memberId, signal), [classId, memberId]);
   const { data, error, loading, retry } = useProgressResource(`${classId}:${memberId}:${revision}`, load);
   if (loading) return <div role="status"><Spin /> Loading student progress…</div>;
@@ -36,5 +45,6 @@ function MemberProgress({ classId, memberId, revision }: { classId: string; memb
       {outcome.activity_title} · Attempt {outcome.attempt_number} · {outcome.status}{outcome.score == null ? "" : ` · ${outcome.score}%`}{outcome.feedback ? ` · ${outcome.feedback}` : ""}
     </div>) : <Empty description="No assessment outcomes" />}
     {data.skill_mastery.map(item => <Tag key={item.skill_topic_id}>{item.name}: {item.level ?? "No assessment evidence"}</Tag>)}
+    <TutorMasterySection classId={classId} memberId={memberId} revision={revision} onAccessRejected={onAccessRejected} />
   </Card>;
 }

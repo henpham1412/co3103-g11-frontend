@@ -23,6 +23,7 @@ const tutorApi = vi.hoisted(() => ({
 const classApi = vi.hoisted(() => ({ getClassDetails: vi.fn() }))
 
 vi.mock('../api/tutorClassApi', () => tutorApi)
+vi.mock('../api/tutorMasteryApi', () => ({ getTutorMastery: vi.fn(async (classId: string, memberId: string) => ({ class_id: classId, class_member_id: memberId, items: [] })) }))
 vi.mock('../../classes/api/classApi', () => classApi)
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ state: { status: 'authenticated', user: { fullName: 'Alex Tutor' } }, logout: vi.fn() }),
