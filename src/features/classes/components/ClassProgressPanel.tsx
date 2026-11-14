@@ -34,8 +34,14 @@ export default function ClassProgressPanel({ classId }: { classId: string }) {
       resumeReadFailed = false;
       const current = target.target_type === "QUIZ_ATTEMPT" || (target.target_type === "CLASS_OUTLINE" && recommended)
         ? await getClassProgress(classId, controller.signal) : progress;
-      const path = target.target_type === "CLASS_OUTLINE" && recommended
-        ? recommendedActivityPath(classId, current, recommended.activity_id) : resumePath(classId, current, target);
+      // The later progress snapshot may already contain a newly available resume target.
+      const latestTarget = target.target_type === "CLASS_OUTLINE" && recommended ? current.resume_target : target;
+      const canonicalPath = latestTarget && typeof latestTarget.target_id === "string" && latestTarget.target_id.trim()
+        && ["LESSON", "QUIZ_ATTEMPT", "CLASS_OUTLINE"].includes(latestTarget.target_type)
+        && (latestTarget.target_type !== "CLASS_OUTLINE" || latestTarget.target_id === classId)
+        ? resumePath(classId, current, latestTarget) : undefined;
+      const path = canonicalPath && latestTarget.target_type === "CLASS_OUTLINE" && recommended
+        ? recommendedActivityPath(classId, current, recommended.activity_id) : canonicalPath;
       if (!path) throw new Error("The learning activity is no longer available. Refresh learning progress and try again.");
       if (!controller.signal.aborted) { setAction({ context: progress }); navigate(path); }
     } catch (cause) {

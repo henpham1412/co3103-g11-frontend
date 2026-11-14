@@ -145,6 +145,62 @@ it.each(["LESSON", "QUIZ_ATTEMPT"] as const)("a newly available %s target wins w
   expect(seen.every(request => request.method === "GET")).toBe(true);
 });
 
+it("uses the newer Lesson target from refreshed progress after an outline resume recheck", async () => {
+  render(view()); await screen.findByText("Practice: Java Variables");
+  const current = outlineProgress();
+  current.resume_target = { target_type: "LESSON", target_id: "lesson-2", reason: "FIRST_INCOMPLETE_LESSON" };
+  Object.assign(current, { status: "IN_PROGRESS", completed_lessons: 1, progress_percentage: 50 });
+  Object.assign(current.chapters[0], { completed_lessons: 1, progress_percentage: 50 });
+  current.chapters[0].lessons[1].completed = false;
+  current.chapters[0].lessons[1].marked_at = null;
+  server.use(http.get(`${base}/class-123/resume-target`, () => HttpResponse.json(outlineProgress().resume_target)),
+    http.get(`${base}/class-123/progress`, () => HttpResponse.json(current)));
+  fireEvent.click(screen.getByRole("button", { name: "Open recommended Quiz" }));
+  const destination = await screen.findByRole("heading", { name: /^Destination:/ });
+  expect(destination).toHaveTextContent("Destination: /classes/class-123/lessons/lesson-2");
+  expect(destination).not.toHaveTextContent("/activities/activity-1");
+});
+
+it("uses the exact newer Quiz Attempt mapping from refreshed progress after an outline resume recheck", async () => {
+  render(view()); await screen.findByText("Practice: Java Variables");
+  const current = classProgress();
+  const assessment = current.chapters[0].lessons[0].assessment_statuses[0];
+  current.chapters[0].lessons[1].assessment_statuses = [{ ...assessment, activity_id: "activity-new",
+    attempts: [{ ...assessment.attempts[0], attempt_id: "attempt-new", started_at: "2026-11-01T02:00:00Z" }] }];
+  current.resume_target = { target_type: "QUIZ_ATTEMPT", target_id: "attempt-new", reason: "IN_PROGRESS_ATTEMPT" };
+  server.use(http.get(`${base}/class-123/resume-target`, () => HttpResponse.json(outlineProgress().resume_target)),
+    http.get(`${base}/class-123/progress`, () => HttpResponse.json(current)));
+  fireEvent.click(screen.getByRole("button", { name: "Open recommended Quiz" }));
+  const destination = await screen.findByRole("heading", { name: /^Destination:/ });
+  expect(destination).toHaveTextContent("Destination: /classes/class-123/lessons/lesson-2/activities/activity-new");
+  expect(destination).not.toHaveTextContent("/activities/activity-1");
+});
+
+it.each([
+  ["missing target", null],
+  ["unsupported target", { target_type: "UNSUPPORTED", target_id: "attempt-old" }],
+  ["missing Lesson identifier", { target_type: "LESSON", target_id: null }],
+  ["foreign outline identifier", { target_type: "CLASS_OUTLINE", target_id: "other-class" }],
+  ["unresolvable Quiz Attempt", { target_type: "QUIZ_ATTEMPT", target_id: "missing-attempt" }],
+])("does not fall back to the recommendation when refreshed progress has a %s", async (_description, resume_target) => {
+  render(view()); await screen.findByText("Practice: Java Variables");
+  server.use(http.get(`${base}/class-123/resume-target`, () => HttpResponse.json(outlineProgress().resume_target)),
+    http.get(`${base}/class-123/progress`, () => HttpResponse.json({ ...classProgress(), resume_target })));
+  fireEvent.click(screen.getByRole("button", { name: "Open recommended Quiz" }));
+  await screen.findByText("Progress action unavailable");
+  expect(screen.getByRole("button", { name: "Refresh learning progress" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: /^Destination:/ })).not.toBeInTheDocument();
+});
+
+it("does not open the stale recommendation when the click-time progress refresh fails", async () => {
+  render(view()); await screen.findByText("Practice: Java Variables");
+  server.use(http.get(`${base}/class-123/resume-target`, () => HttpResponse.json(outlineProgress().resume_target)),
+    http.get(`${base}/class-123/progress`, () => HttpResponse.json({ code: "UNAVAILABLE", message: "Progress unavailable", details: [] }, { status: 500 })));
+  fireEvent.click(screen.getByRole("button", { name: "Open recommended Quiz" }));
+  await screen.findByText("Progress action unavailable");
+  expect(screen.queryByRole("heading", { name: /^Destination:/ })).not.toBeInTheDocument();
+});
+
 it("does not navigate or retain a competing card after a failed click-time resume recheck", async () => {
   render(view()); await screen.findByText("Practice: Java Variables");
   server.use(http.get(`${base}/class-123/resume-target`, () => HttpResponse.json({ message: "Read denied", code: "FORBIDDEN", details: [] }, { status: 403 })));
