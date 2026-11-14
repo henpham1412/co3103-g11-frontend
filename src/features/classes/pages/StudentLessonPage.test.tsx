@@ -15,6 +15,8 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('../api/classApi', () => api)
+const reportApi = vi.hoisted(() => ({ createContentReport: vi.fn() }))
+vi.mock('../../discussions/api/contentReportApi', () => reportApi)
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ state: { status: 'authenticated', user: { fullName: 'Test Student' } }, logout: vi.fn() }),
 }))
@@ -228,5 +230,22 @@ describe('FE-5 student lesson', () => {
 
     expect(await screen.findByText('The server refused the request.')).toBeInTheDocument()
     await waitFor(() => expect(button).not.toHaveClass('ant-btn-loading'))
+  })
+
+  it('reports a lesson material through the content-report endpoint', async () => {
+    reportApi.createContentReport.mockResolvedValue({
+      report_id: 'report-1', content_type: 'MATERIAL', content_id: 'material-1',
+      reason: 'INAPPROPRIATE', status: 'PENDING', created_at: '2026-11-01T00:00:00Z',
+    })
+
+    renderLesson()
+    fireEvent.click(await screen.findByRole('button', { name: /Report material/ }))
+    fireEvent.click(await screen.findByText('Inappropriate content'))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit report' }))
+
+    await waitFor(() => expect(reportApi.createContentReport).toHaveBeenCalledWith({
+      content_type: 'MATERIAL', content_id: 'material-1', reason: 'INAPPROPRIATE', description: undefined,
+    }))
+    expect(await screen.findByText('Thank you. Your report has been submitted.')).toBeInTheDocument()
   })
 })

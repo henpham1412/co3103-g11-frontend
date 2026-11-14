@@ -1,0 +1,18 @@
+.discussions-page { max-width: 1200px; margin: 0 auto; padding: 32px; color: #172033; }
+.discussions { display: grid; gap: 16px; }
+.discussions__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.discussions__header h3.ant-typography { margin-bottom: 4px; }
+.discussions__loading { display: flex; justify-content: center; align-items: center; gap: 12px; min-height: 200px; color: #64748b; }
+.discussions__list { display: grid; gap: 12px; }
+.discussions__post-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.discussions__post-head h4.ant-typography { margin-bottom: 0; }
+.discussions__post-body { margin: 8px 0 12px; color: #334155; white-space: pre-wrap; }
+.discussions__post-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.discussions__pagination { display: flex; justify-content: center; }
+.discussions__thread-post { margin-bottom: 8px; }
+.discussions__replies { display: grid; gap: 12px; margin-top: 8px; }
+.discussions__reply-form { display: grid; gap: 4px; }
+.discussions__hub-list { display: grid; gap: 12px; margin-top: 16px; }
+.discussions__hub-card .ant-card-body { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.discussions__hub-meta { color: #64748b; }
+@media (max-width: 680px) { .discussions-page { padding: 20px 16px; } .discussions__header { flex-direction: column; align-items: stretch; } }
