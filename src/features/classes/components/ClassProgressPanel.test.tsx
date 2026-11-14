@@ -5,6 +5,7 @@ import { classProgress } from '@/test/fixtures/progress'
 import ClassProgressPanel from './ClassProgressPanel'
 const api = vi.hoisted(() => ({ getClassProgress: vi.fn(), getResumeTarget: vi.fn() }))
 vi.mock('../api/progressApi', () => api)
+vi.mock('../api/recommendationApi', () => ({ getRecommendedActivities: vi.fn(async (classId: string) => ({ class_id: classId, recommendation: null, reason: 'NO_ELIGIBLE_ACTIVITY' })) }))
 beforeEach(() => { api.getClassProgress.mockReset().mockResolvedValue(classProgress()); api.getResumeTarget.mockReset().mockResolvedValue(classProgress().resume_target) })
 function view(id = 'class-123') {
   return <MemoryRouter><Routes><Route path="/" element={<ClassProgressPanel classId={id} />} /><Route path="/classes/:classId/lessons/:lessonId/activities/:activityId" element={<h1>Resumed canonical quiz</h1>} /><Route path="/classes/:classId" element={<h1>Class outline</h1>} /></Routes></MemoryRouter>
