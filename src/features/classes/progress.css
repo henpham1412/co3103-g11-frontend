@@ -1,0 +1,9 @@
+.class-progress { display: grid; gap: 18px; }
+.class-progress__summary-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.class-progress__summary .ant-progress { margin: 12px 0; }
+.class-progress__lesson { display: flex; align-items: center; gap: 10px; min-height: 42px; border-bottom: 1px solid #edf0f5; }
+.class-progress__lesson:last-child { border-bottom: 0; }
+.class-progress__lesson > span:first-child { width: 18px; color: #64748b; }
+.class-progress__lesson > span.is-complete { color: #16a34a; }
+.class-progress__lesson a { flex: 1; }
+.progress-loading { display: flex; justify-content: center; gap: 10px; padding: 48px; }

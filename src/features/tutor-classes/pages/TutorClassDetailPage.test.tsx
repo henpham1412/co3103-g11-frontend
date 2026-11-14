@@ -4,10 +4,13 @@ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/apiError'
+import { memberProgress } from '@/test/fixtures/progress'
 import type { ClassCatalogItem } from '../../classes/types'
 import type { TutorMember, TutorMemberPage } from '../types'
 
 const tutorApi = vi.hoisted(() => ({
+  getTutorClassProgress: vi.fn(),
+  getTutorMemberProgress: vi.fn(),
   approveTutorMember: vi.fn(),
   getTutorClassMembers: vi.fn(),
   getTutorOutline: vi.fn(),
@@ -448,4 +451,27 @@ describe('FE-4 tutor class detail', () => {
     expect(await screen.findByText('Choose a JPEG, PNG or WebP image.')).toBeInTheDocument()
     expect(tutorApi.uploadClassThumbnail).not.toHaveBeenCalled()
   })
+})
+
+it('refreshes the FE-8 progress tab after a real parent removal/reload cycle', async () => {
+  let removed = false
+  tutorApi.getTutorClassProgress.mockImplementation(async () => ({ class_id: 'class-123', members: removed ? [] : [{
+    class_member_id: activeMember.class_member_id, student_id: activeMember.student_id, student_name: 'Selected learner',
+    completed_lessons: 0, eligible_lessons: 2, progress_percentage: 0, status: 'IN_PROGRESS',
+  }] }))
+  tutorApi.getTutorMemberProgress.mockResolvedValue(memberProgress(activeMember.class_member_id))
+  tutorApi.removeTutorMember.mockImplementation(async () => { removed = true; rosterFor([], [pendingMember]) })
+  renderPage()
+  await screen.findByText('Programming Foundations')
+  fireEvent.click(screen.getByRole('tab', { name: 'Progress' }))
+  fireEvent.click(await screen.findByRole('button', { name: /Selected learner/ }))
+  await screen.findByText('Known zero: WEAK')
+  fireEvent.click(screen.getByRole('tab', { name: /^Member/ }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Remove Member' }))
+  await waitFor(() => expect(tutorApi.removeTutorMember).toHaveBeenCalled())
+  await screen.findByText('No active members')
+  fireEvent.click(screen.getByRole('tab', { name: 'Progress' }))
+  await screen.findByText('No active member progress is available')
+  expect(screen.queryByText('Known zero: WEAK')).not.toBeInTheDocument()
 })

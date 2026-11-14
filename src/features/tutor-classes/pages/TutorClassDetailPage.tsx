@@ -11,6 +11,7 @@ import type { TutorMember, TutorMemberPage, TutorOutline } from "../types";
 import { isStaleTutorState, tutorErrorText } from "../utils/tutorErrorText";
 import { lastValidPage } from "../utils/pagination";
 import type { TutorMemberQuery } from "../api/tutorClassApi";
+import TutorProgressPanel from "../components/TutorProgressPanel";
 
 const PAGE_SIZE = 20;
 const THUMBNAIL_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -46,7 +47,7 @@ export default function TutorClassDetailPage() {
   const [pendingMembers, setPendingMembers] = useState<TutorMemberPage>();
   const [removeCandidate, setRemoveCandidate] = useState<TutorMember>();
   const [outline, setOutline] = useState<TutorOutline>();
-  const [activeTab, setActiveTab] = useState<"syllabus" | "members">("syllabus");
+  const [activeTab, setActiveTab] = useState<"syllabus" | "members" | "progress">("syllabus");
   // Page navigation starts a read through refresh(). Recovery updates these
   // targets without starting a second batch of already-completed requests.
   const activePage = useRef(1);
@@ -206,12 +207,12 @@ export default function TutorClassDetailPage() {
             <div className="tutor-class-detail-meta"><span>{details.tutor.full_name} · Tutor</span><span>{details.active_member_count}/{details.max_capacity ?? "∞"} Seats</span><Tag color="blue">{details.enrollment_policy}</Tag></div>
           </section>
 
-          <div className="tutor-page__tabs" role="tablist"><button className={activeTab === "syllabus" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "syllabus"} onClick={() => setActiveTab("syllabus")}>Course Syllabus</button><button className={activeTab === "members" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "members"} onClick={() => setActiveTab("members")}>Member <Tag>{activeMembers?.total_items ?? 0}</Tag></button></div>
+          <div className="tutor-page__tabs" role="tablist"><button className={activeTab === "syllabus" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "syllabus"} onClick={() => setActiveTab("syllabus")}>Course Syllabus</button><button className={activeTab === "members" ? "is-active" : ""} type="button" role="tab" aria-selected={activeTab === "members"} onClick={() => setActiveTab("members")}>Member <Tag>{activeMembers?.total_items ?? 0}</Tag></button><button type="button" role="tab" aria-selected={activeTab === "progress"} onClick={() => setActiveTab("progress")}>Progress</button></div>
           {activeTab === "syllabus" ? <section className="tutor-panel tutor-syllabus">
             <header className="tutor-syllabus__heading"><div><h2>Course Syllabus</h2><span>{outline?.chapters.length ?? 0} chapters · {outline?.chapters.reduce((sum, chapter) => sum + chapter.lessons.length, 0) ?? 0} lessons</span></div><Link to={`/tutor/classes/${classId}/content`}><Button icon={<FolderOpenOutlined />}>Manage content</Button></Link></header>
             <Alert type="info" showIcon title="Tutor preview includes hidden content. Students can only access published content inside published chapters." />
             {outline?.chapters.length ? <div className="tutor-syllabus__chapters">{outline.chapters.map((chapter, index) => <article className="tutor-syllabus__chapter" key={chapter.chapter_id}><header><strong>Chapter {index + 1} · {chapter.title}</strong><Tag color={chapter.status === "PUBLISHED" ? "green" : "default"}>{chapter.status}</Tag></header>{chapter.lessons.map((lesson, lessonIndex) => <div className="tutor-syllabus__lesson" key={lesson.lesson_id}><span>{index + 1}.{lessonIndex + 1} · {lesson.title}</span><span>{lesson.estimated_duration ?? "—"} mins · {lesson.status}</span></div>)}</article>)}</div> : <Empty description="No syllabus content yet" />}
-          </section> : <>
+          </section> : activeTab === "progress" ? <TutorProgressPanel classId={classId} revision={reload} /> : <>
           <section className="tutor-page__section tutor-panel">
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}><div><h2>Class members</h2><div className="tutor-panel__sub">Search by name or email across both rosters. Student identifiers are shown when names and emails are not included in the response.</div></div><span>{activeMembers?.total_items ?? 0} active students · Capacity {details.max_capacity ?? "unlimited"}</span></div>
             {archived && <Alert className="tutor-page__notice" type="info" showIcon title="This class is archived" description="Approve, reject and remove stay closed. Set the lifecycle back to Active before changing membership." />}

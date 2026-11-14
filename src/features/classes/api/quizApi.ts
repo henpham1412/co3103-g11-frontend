@@ -40,7 +40,8 @@ export async function submitQuizAttempt(attemptId: string) {
   return response.data;
 }
 
-export async function getAssessmentHistory(signal?: AbortSignal) {
-  const response = await lmsClient.get<AssessmentHistoryResponse>("/me/assessment-history", { signal });
+export interface AssessmentHistoryQuery { page?: number; size?: number; class_id?: string; type?: "QUIZ" | "ASSIGNMENT" }
+export async function getAssessmentHistory(signal?: AbortSignal, query: AssessmentHistoryQuery = {}) {
+  const response = await lmsClient.get<AssessmentHistoryResponse>("/me/assessment-history", { signal, params: query });
   return response.data;
 }

@@ -4,11 +4,14 @@ import { centralIdentityClient } from '@/api/centralIdentityClient'
 import { wireCurrentUser, wireLoginResponse, wireRegisteredUser } from './fixtures/authWire'
 import { wireForgotAcknowledgment, wireResetAcknowledgment } from './fixtures/passwordRecoveryWire'
 import { wireProfileAcknowledgment } from './fixtures/profileWire'
+import { classProgress } from './fixtures/progress'
 
 export const identityApiUrl = (path: string) =>
   `${centralIdentityClient.defaults.baseURL?.replace(/\/$/, '')}${path}`
 
 export const handlers = [
+  http.get('http://localhost:8081/api/v1/classes/:classId/progress', ({ params }) => HttpResponse.json(classProgress(String(params.classId)))),
+  http.put('http://localhost:8081/api/v1/classes/:classId/last-visit', () => HttpResponse.json({})),
   http.patch(identityApiUrl('/users/me'), () => HttpResponse.json(wireProfileAcknowledgment)),
   http.post(identityApiUrl('/auth/forgot-password'), () => HttpResponse.json(wireForgotAcknowledgment)),
   http.post(identityApiUrl('/auth/reset-password'), () => HttpResponse.json(wireResetAcknowledgment)),

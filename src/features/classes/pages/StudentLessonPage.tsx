@@ -1,3 +1,5 @@
+import LessonCompletionControl from "../components/LessonCompletionControl";
+import { recordLastVisit } from "../api/progressApi";
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Empty, Spin, Tag, Typography } from "antd";
 import { ArrowLeftOutlined, ArrowRightOutlined, FileTextOutlined, LinkOutlined, VideoCameraOutlined } from "@ant-design/icons";
@@ -30,6 +32,7 @@ export default function StudentLessonPage() {
   const { classId = "", lessonId = "" } = useParams();
   const requestKey = `${classId}:${lessonId}`;
   const [result, setResult] = useState<StudentLessonPageData>();
+  const [visitError, setVisitError] = useState<{ key: string; message: string }>();
   const loading = result?.requestKey !== requestKey;
   const page = loading ? undefined : result;
   const navigation = getLessonNavigation(page?.outline, lessonId);
@@ -46,6 +49,9 @@ export default function StudentLessonPage() {
       .then(([classItem, outline, lesson, materials]) => {
         if (!controller.signal.aborted) {
           setResult({ requestKey, classItem, outline, lesson, materials });
+          if (classItem.status === "ACTIVE") void recordLastVisit(classId, lessonId).catch((cause: unknown) => {
+            if (!controller.signal.aborted) setVisitError({ key: requestKey, message: normalizeApiError(cause).message });
+          });
         }
       })
       .catch((cause: unknown) => {
@@ -135,13 +141,8 @@ export default function StudentLessonPage() {
           )}
         </section>
 
-        <Alert
-          className="student-lesson__progress-note"
-          type="info"
-          showIcon
-          title="Opening a lesson does not mark it complete."
-          description="Learning progress updates are not exposed by the current LMS APIs."
-        />
+        {visitError?.key === requestKey && <Alert type="warning" title="Last visit could not be recorded" description={visitError.message} />}
+        <LessonCompletionControl key={requestKey} classId={classId} lessonId={lessonId} archived={page.classItem.status === "ARCHIVED"} />
 
         <nav className="student-lesson__lesson-nav" aria-label="Lesson navigation">
           {navigation.previous ? (

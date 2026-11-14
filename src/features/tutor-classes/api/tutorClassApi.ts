@@ -10,7 +10,16 @@ import type {
   TutorClass,
   TutorClassPage,
   TutorMemberPage,
+  TutorProgressResponse,
+  TutorMemberProgressResponse,
 } from "../types";
+
+export async function getTutorClassProgress(classId: string, signal?: AbortSignal) {
+  return (await lmsClient.get<TutorProgressResponse>(`/tutor/classes/${classId}/progress`, { signal })).data;
+}
+export async function getTutorMemberProgress(classId: string, memberId: string, signal?: AbortSignal) {
+  return (await lmsClient.get<TutorMemberProgressResponse>(`/tutor/classes/${classId}/members/${memberId}/progress`, { signal })).data;
+}
 
 export async function getTutorClasses(
   query: { page?: number; size?: number; sort?: string } = {},

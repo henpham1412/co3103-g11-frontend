@@ -93,3 +93,28 @@ export interface TutorMaterial {
   sequence_order: number;
   status: ContentVisibility;
 }
+
+export interface TutorProgressMember {
+  class_member_id: string;
+  student_id: string;
+  student_name: string | null;
+  completed_lessons: number;
+  eligible_lessons: number;
+  progress_percentage: number;
+  status: import("../classes/types").LearningProgressStatus;
+}
+export interface TutorProgressResponse { class_id: string; members: TutorProgressMember[] }
+export type MasteryLevel = "WEAK" | "DEVELOPING" | "SUFFICIENT";
+export interface TutorMemberProgressResponse {
+  class_id: string;
+  class_member_id: string;
+  student_id: string;
+  membership_status: "ACTIVE";
+  completed_lessons: number;
+  eligible_lessons: number;
+  progress_percentage: number;
+  status: import("../classes/types").LearningProgressStatus;
+  chapters: import("../classes/types").ProgressChapter[];
+  assessment_outcomes: import("../classes/quiz-types").AssessmentHistoryItem[];
+  skill_mastery: { skill_topic_id: string; name: string; level: MasteryLevel | null }[];
+}

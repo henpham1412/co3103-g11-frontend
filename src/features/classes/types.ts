@@ -97,3 +97,50 @@ export interface ClassOutlineLesson {
   materials?: ClassOutlineMaterial[];
   activities?: ClassOutlineActivity[];
 }
+
+export type LearningProgressStatus = "IN_PROGRESS" | "COMPLETED";
+export interface ProgressAttempt {
+  attempt_id: string;
+  attempt_number: number;
+  status: "IN_PROGRESS" | "SUBMITTED";
+  started_at: string;
+  submitted_at: string | null;
+  score: number | null;
+}
+export interface AssessmentStatus {
+  activity_id: string;
+  title: string;
+  activity_type: ActivityType;
+  status: "NOT_STARTED" | "IN_PROGRESS" | "SUBMITTED";
+  attempts: ProgressAttempt[];
+}
+export interface ProgressLesson {
+  lesson_id: string;
+  title: string;
+  sequence_order: number;
+  completed: boolean;
+  marked_at: string | null;
+  assessment_statuses: AssessmentStatus[];
+}
+export interface ProgressChapter {
+  chapter_id: string;
+  title: string;
+  completed_lessons: number;
+  eligible_lessons: number;
+  progress_percentage: number;
+  lessons: ProgressLesson[];
+}
+export interface ResumeTarget {
+  target_type: "LESSON" | "QUIZ_ATTEMPT" | "CLASS_OUTLINE";
+  target_id: string;
+  reason: string;
+}
+export interface ClassProgressResponse {
+  class_id: string;
+  completed_lessons: number;
+  eligible_lessons: number;
+  progress_percentage: number;
+  status: LearningProgressStatus;
+  chapters: ProgressChapter[];
+  resume_target: ResumeTarget;
+}
