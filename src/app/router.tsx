@@ -11,6 +11,9 @@ import ClassCatalogPage from "../features/classes/pages/ClassCatalogPage";
 import ClassDetailPage from "../features/classes/pages/ClassDetailPage";
 import ClassProgressPage from "../features/classes/pages/ClassProgressPage";
 import StudentLessonPage from "../features/classes/pages/StudentLessonPage";
+import DiscussionBoardPage from "../features/discussions/pages/DiscussionBoardPage";
+import DiscussionHubPage from "../features/discussions/pages/DiscussionHubPage";
+import DiscussionThreadPage from "../features/discussions/pages/DiscussionThreadPage";
 import TutorClassDetailPage from "../features/tutor-classes/pages/TutorClassDetailPage";
 import TutorClassManagementPage from "../features/tutor-classes/pages/TutorClassManagementPage";
 import TutorContentManagementPage from "../features/tutor-classes/pages/TutorContentManagementPage";
@@ -21,7 +24,6 @@ import TutorDashboardPage from "../features/tutor-classes/pages/TutorDashboardPa
 import TutorRoute from "../features/tutor-classes/TutorRoute";
 import App from "./App";
 import NotFoundPage from "./NotFoundPage";
-import TutorWorkspaceSectionPage from "./TutorWorkspaceSectionPage";
 import WorkspaceSectionPage from "./WorkspaceSectionPage";
 
 const authFallback = (
@@ -64,6 +66,11 @@ export const router = createBrowserRouter([
           { path: "/classes", element: <ClassCatalogPage /> },
           { path: "/classes/:classId", element: <ClassDetailPage /> },
           { path: "/classes/:classId/progress", element: <ClassProgressPage /> },
+          { path: "/classes/:classId/discussions", element: <DiscussionBoardPage variant="student" /> },
+          {
+            path: "/classes/:classId/discussions/:discussionId",
+            element: <DiscussionThreadPage variant="student" />,
+          },
           { path: "/classes/:classId/lessons/:lessonId", element: <StudentLessonPage /> },
           {
             path: "/classes/:classId/lessons/:lessonId/activities/:activityId",
@@ -71,7 +78,7 @@ export const router = createBrowserRouter([
           },
           { path: "/assessment-history", element: <AssessmentHistoryPage /> },
           { path: "/dashboard", element: <WorkspaceSectionPage /> },
-          { path: "/discussion", element: <WorkspaceSectionPage /> },
+          { path: "/discussion", element: <DiscussionHubPage variant="student" /> },
           {
             element: <TutorRoute />,
             children: [
@@ -86,6 +93,12 @@ export const router = createBrowserRouter([
               { path: "/tutor/classes/:classId/content/assignment/:activityId", element: <TutorAssignmentPage /> },
               { path: "/tutor/classes/:classId/content/assignment/:activityId/grade", element: <TutorAssignmentGradingPage /> },
               { path: "/tutor/discussion", element: <TutorWorkspaceSectionPage /> },
+              { path: "/tutor/discussion", element: <DiscussionHubPage variant="tutor" /> },
+              { path: "/tutor/classes/:classId/discussions", element: <DiscussionBoardPage variant="tutor" /> },
+              {
+                path: "/tutor/classes/:classId/discussions/:discussionId",
+                element: <DiscussionThreadPage variant="tutor" />,
+              },
             ],
           },
         ],
