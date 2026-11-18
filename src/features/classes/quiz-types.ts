@@ -71,17 +71,22 @@ export interface QuizSubmitResult {
 }
 
 export interface AssessmentHistoryItem {
+  /** For QUIZ rows this is the attempt_id; for ASSIGNMENT rows this is the submission_id. */
   attempt_id: string;
+  submission_id?: string;
   class_id: string;
   activity_id: string;
   activity_title: string;
-  attempt_number: number;
+  /** Only present for QUIZ rows. */
+  attempt_number?: number;
   type: "QUIZ" | "ASSIGNMENT";
-  status: QuizAttemptStatus;
-  started_at: string;
+  /** QUIZ: IN_PROGRESS | SUBMITTED. ASSIGNMENT: SUBMITTED | GRADED. */
+  status: QuizAttemptStatus | "GRADED";
+  started_at?: string;
   submitted_at: string | null;
   score: number | null;
   feedback: string | null;
+  is_late?: boolean;
 }
 
 export interface AssessmentHistoryResponse {

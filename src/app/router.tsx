@@ -15,6 +15,8 @@ import TutorClassDetailPage from "../features/tutor-classes/pages/TutorClassDeta
 import TutorClassManagementPage from "../features/tutor-classes/pages/TutorClassManagementPage";
 import TutorContentManagementPage from "../features/tutor-classes/pages/TutorContentManagementPage";
 import TutorQuizPage from "../features/tutor-classes/pages/TutorQuizPage";
+import TutorAssignmentPage from "../features/tutor-classes/pages/TutorAssignmentPage";
+import TutorAssignmentGradingPage from "../features/tutor-classes/pages/TutorAssignmentGradingPage";
 import TutorDashboardPage from "../features/tutor-classes/pages/TutorDashboardPage";
 import TutorRoute from "../features/tutor-classes/TutorRoute";
 import App from "./App";
@@ -80,6 +82,9 @@ export const router = createBrowserRouter([
               { path: "/tutor/classes/:classId/content", element: <TutorContentManagementPage /> },
               { path: "/tutor/classes/:classId/content/quiz/new", element: <TutorQuizPage /> },
               { path: "/tutor/classes/:classId/content/quiz/:activityId", element: <TutorQuizPage /> },
+              { path: "/tutor/classes/:classId/content/assignment/new", element: <TutorAssignmentPage /> },
+              { path: "/tutor/classes/:classId/content/assignment/:activityId", element: <TutorAssignmentPage /> },
+              { path: "/tutor/classes/:classId/content/assignment/:activityId/grade", element: <TutorAssignmentGradingPage /> },
               { path: "/tutor/discussion", element: <TutorWorkspaceSectionPage /> },
             ],
           },

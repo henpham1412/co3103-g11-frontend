@@ -365,10 +365,19 @@ export default function TutorContentManagementPage() {
                             {activity.activity_type === "QUIZ" && (
                               <Link style={{ marginLeft: 12 }} to={`/tutor/classes/${classId}/content/quiz/${activity.activity_id}`}>Edit quiz</Link>
                             )}
+                            {activity.activity_type === "ASSIGNMENT" && (
+                              <>
+                                <Link style={{ marginLeft: 12 }} to={`/tutor/classes/${classId}/content/assignment/${activity.activity_id}`}>Edit assignment</Link>
+                                <Link style={{ marginLeft: 12 }} to={`/tutor/classes/${classId}/content/assignment/${activity.activity_id}/grade`}>Grade</Link>
+                              </>
+                            )}
                           </span>
                         ))}
                         <Link to={`/tutor/classes/${classId}/content/quiz/new?lessonId=${lesson.lesson_id}`}>
                           <Button className="tutor-add-material" type="link" icon={<PlusOutlined />} disabled={Boolean(busy)}>Add Quiz</Button>
+                        </Link>
+                        <Link to={`/tutor/classes/${classId}/content/assignment/new?lessonId=${lesson.lesson_id}`}>
+                          <Button className="tutor-add-material" type="link" icon={<PlusOutlined />} disabled={Boolean(busy)}>Add Assignment</Button>
                         </Link>
                         <Button className="tutor-add-material" type="link" icon={<PlusOutlined />} disabled={Boolean(busy)} onClick={() => openEditor({ kind: "material", lesson })}>Add Material</Button>
                       </article>
