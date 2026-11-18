@@ -133,6 +133,24 @@ describe('FE-3 class detail', () => {
     expect(api.membershipRequest).toHaveBeenCalledWith('/me/classes', { params: { page: 1, size: 20 }, signal: expect.any(AbortSignal) })
   })
 
+  it('links an active member to the class discussion board', async () => {
+    renderDetails()
+
+    const link = await screen.findByRole('link', { name: /Class discussions/ })
+    expect(link).toHaveAttribute('href', '/classes/class-123/discussions')
+  })
+
+  it('keeps the discussion entry point away from a pending membership', async () => {
+    api.membershipRequest.mockResolvedValue({ data: membershipPage([
+      { class_id: 'class-123', membership_status: 'PENDING' },
+    ]) })
+
+    renderDetails()
+
+    expect(await screen.findByText('Request pending')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Class discussions/ })).not.toBeInTheDocument()
+  })
+
   it('links each lesson activity to the FE-6 activity route', async () => {
     api.getClassOutline.mockResolvedValue(outlineWithActivities)
 

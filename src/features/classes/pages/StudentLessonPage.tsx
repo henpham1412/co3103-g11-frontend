@@ -2,10 +2,11 @@ import LessonCompletionControl from "../components/LessonCompletionControl";
 import { recordLastVisit } from "../api/progressApi";
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Empty, Spin, Tag, Typography } from "antd";
-import { ArrowLeftOutlined, ArrowRightOutlined, FileTextOutlined, LinkOutlined, VideoCameraOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowRightOutlined, FileTextOutlined, FlagOutlined, LinkOutlined, VideoCameraOutlined } from "@ant-design/icons";
 import { Link, useParams } from "react-router-dom";
 
 import StudentWorkspaceLayout from "../../../components/layout/StudentWorkspaceLayout";
+import ReportContentModal from "../../discussions/components/ReportContentModal";
 import { normalizeApiError } from "@/api/apiError";
 import {
   getClassDetails,
@@ -101,6 +102,10 @@ export default function StudentLessonPage() {
           <span>Lesson {navigation.current.sequence_order + 1}</span>
         </div>
 
+        <Link to={`/classes/${classId}/discussions?lesson_id=${encodeURIComponent(lessonId)}`}>
+          <Button>Lesson discussions</Button>
+        </Link>
+
         <Card className="student-lesson__content-card">
           <Typography.Title level={4}>Lesson content</Typography.Title>
           {page.lesson.description ? (
@@ -170,6 +175,7 @@ export default function StudentLessonPage() {
 function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
   const { message } = App.useApp();
   const [downloading, setDownloading] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const display = getMaterialDisplay(material);
   const icon = material.material_type === "VIDEO" ? <VideoCameraOutlined />
     : material.material_type === "URL" ? <LinkOutlined /> : <FileTextOutlined />;
@@ -208,8 +214,16 @@ function MaterialCard({ material }: { material: ClassOutlineMaterial }) {
           </Button>
         )}
         {display === "unavailable" && <Typography.Text type="secondary">This material has no content or file to open.</Typography.Text>}
+        <Button size="small" icon={<FlagOutlined />} onClick={() => setReportOpen(true)}>Report material</Button>
       </div>
       <Tag>{material.material_type}</Tag>
+      <ReportContentModal
+        open={reportOpen}
+        contentType="MATERIAL"
+        contentId={material.material_id}
+        contentTitle={material.title}
+        onClose={() => setReportOpen(false)}
+      />
     </Card>
   );
 }
