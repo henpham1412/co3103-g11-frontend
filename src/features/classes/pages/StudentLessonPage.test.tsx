@@ -125,6 +125,7 @@ describe('FE-5 student lesson', () => {
     expect(screen.getByText('PUBLISHED')).toBeInTheDocument()
     expect(screen.getByText('Read chapter 1.')).toBeInTheDocument()
     expect(screen.getByText('Opening a lesson does not mark it complete.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Lesson discussions' })).toHaveAttribute('href', '/classes/class-123/discussions?lesson_id=lesson-2')
     expect(screen.getByRole('link', { name: /Previous/ })).toHaveAttribute('href', '/classes/class-123/lessons/lesson-1')
     expect(screen.getByRole('link', { name: /Next lesson/ })).toHaveAttribute('href', '/classes/class-123/lessons/lesson-3')
     expect(screen.queryByText('Published')).not.toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, App, Button, Card, Empty, Form, Input, Modal, Pagination, Spin, Tag, Typography } from "antd";
 import { FlagOutlined, PlusOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
@@ -21,6 +21,7 @@ interface DiscussionBoardProps {
   currentUserId?: string;
   currentUserName?: string;
   basePath: string;
+  lesson?: { lesson_id: string; title: string };
 }
 
 interface BoardState {
@@ -35,8 +36,13 @@ interface NewPostValues {
   content: string;
 }
 
-export default function DiscussionBoard({ classItem, currentUserId, currentUserName, basePath }: DiscussionBoardProps) {
+export default function DiscussionBoard({ classItem, currentUserId, currentUserName, basePath, lesson }: DiscussionBoardProps) {
   const { message } = App.useApp();
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
   const [form] = Form.useForm<NewPostValues>();
   const [page, setPage] = useState(1);
   const [readToken, setReadToken] = useState(0);
@@ -46,7 +52,7 @@ export default function DiscussionBoard({ classItem, currentUserId, currentUserN
   const [postError, setPostError] = useState<string>();
   const [reportTarget, setReportTarget] = useState<DiscussionPost>();
 
-  const requestKey = `${classItem.class_id}:${page}:${readToken}`;
+  const requestKey = `${classItem.class_id}:${lesson?.lesson_id ?? "class"}:${page}:${readToken}`;
   const loading = result?.requestKey !== requestKey;
   const data = loading ? undefined : result;
   const archived = classItem.status === "ARCHIVED";
@@ -55,7 +61,7 @@ export default function DiscussionBoard({ classItem, currentUserId, currentUserN
 
   useEffect(() => {
     const controller = new AbortController();
-    listClassDiscussions(classItem.class_id, { page, size: PAGE_SIZE }, controller.signal)
+    listClassDiscussions(classItem.class_id, { page, size: PAGE_SIZE, ...(lesson ? { lesson_id: lesson.lesson_id } : {}) }, controller.signal)
       .then((response) => {
         if (!controller.signal.aborted) setResult({ requestKey, page: response });
       })
@@ -65,7 +71,7 @@ export default function DiscussionBoard({ classItem, currentUserId, currentUserN
         setResult({ requestKey, error: discussionErrorText(cause), status: failure.status });
       });
     return () => controller.abort();
-  }, [classItem.class_id, page, requestKey]);
+  }, [classItem.class_id, lesson, page, requestKey]);
 
   async function submitPost() {
     let values: NewPostValues;
@@ -74,19 +80,21 @@ export default function DiscussionBoard({ classItem, currentUserId, currentUserN
     } catch {
       return;
     }
+    if (!active.current) return;
     setPosting(true);
     setPostError(undefined);
     try {
-      await createDiscussion(classItem.class_id, { title: values.title.trim(), content: values.content });
+      await createDiscussion(classItem.class_id, { title: values.title.trim(), content: values.content, ...(lesson ? { lesson_id: lesson.lesson_id } : {}) });
+      if (!active.current) return;
       message.success("Your post was published.");
       form.resetFields();
       setComposerOpen(false);
       setPage(1);
       reload();
     } catch (cause) {
-      setPostError(discussionErrorText(cause));
+      if (active.current) setPostError(discussionErrorText(cause));
     } finally {
-      setPosting(false);
+      if (active.current) setPosting(false);
     }
   }
 
@@ -136,7 +144,7 @@ export default function DiscussionBoard({ classItem, currentUserId, currentUserN
                 {post.content}
               </Typography.Paragraph>
               <div className="discussions__post-actions">
-                <Link to={`${basePath}/${post.discussion_id}`}>
+                <Link to={`${basePath}/${post.discussion_id}${lesson ? `?lesson_id=${encodeURIComponent(lesson.lesson_id)}` : ""}`}>
                   <Button type="primary" size="small">Open thread</Button>
                 </Link>
                 <Button size="small" icon={<FlagOutlined />} onClick={() => setReportTarget(post)}>Report</Button>
@@ -174,6 +182,13 @@ export default function DiscussionBoard({ classItem, currentUserId, currentUserN
           New post
         </Button>
       </div>
+      {lesson ? (
+        <div className="discussions__post-actions">
+          <Tag>Lesson: {lesson.title}</Tag>
+          <Link to={`/classes/${classItem.class_id}/lessons/${lesson.lesson_id}`}>Back to lesson</Link>
+          <Link to={basePath}>All class discussions</Link>
+        </div>
+      ) : <Typography.Paragraph type="secondary">All class discussions</Typography.Paragraph>}
       {archived && (
         <Alert type="info" showIcon title="This class is archived" description="Existing posts stay readable, but the server no longer accepts new ones." />
       )}

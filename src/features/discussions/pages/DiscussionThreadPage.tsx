@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Spin } from "antd";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 
 import { normalizeApiError } from "@/api/apiError";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,6 +22,8 @@ interface ThreadPageState {
 
 export default function DiscussionThreadPage({ variant }: { variant: DiscussionVariant }) {
   const { classId = "", discussionId = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const lessonId = searchParams.get("lesson_id") || undefined;
   const { state } = useAuth();
   const currentUserId = state.status === "authenticated" ? state.user.userId : undefined;
   const currentUserName = state.status === "authenticated" ? state.user.fullName : undefined;
@@ -61,7 +63,8 @@ export default function DiscussionThreadPage({ variant }: { variant: DiscussionV
   } else {
     content = (
       <DiscussionThreadView
-        key={discussionId}
+        key={`${classId}:${discussionId}:${lessonId ?? ""}`}
+        lessonId={lessonId}
         classItem={data.classItem}
         discussionId={discussionId}
         currentUserId={currentUserId}

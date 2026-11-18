@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, App, Form, Input, Modal, Radio, Typography } from "antd";
 
 import { createContentReport } from "../api/contentReportApi";
@@ -20,7 +20,11 @@ interface ReportFormValues {
   description?: string;
 }
 
-export default function ReportContentModal({
+export default function ReportContentModal(props: ReportContentModalProps) {
+  return props.open ? <ReportSession key={`${props.contentType}:${props.contentId}`} {...props} /> : null;
+}
+
+function ReportSession({
   open,
   contentType,
   contentId,
@@ -32,6 +36,11 @@ export default function ReportContentModal({
   const [form] = Form.useForm<ReportFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
 
   async function submit() {
     let values: ReportFormValues;
@@ -40,6 +49,7 @@ export default function ReportContentModal({
     } catch {
       return;
     }
+    if (!active.current) return;
     setSubmitting(true);
     setError(undefined);
     try {
@@ -49,14 +59,15 @@ export default function ReportContentModal({
         reason: values.reason,
         description: values.description,
       });
+      if (!active.current) return;
       message.success(REPORT_SUBMITTED_MESSAGE);
       form.resetFields();
       onSubmitted?.(report);
       onClose();
     } catch (cause) {
-      setError(discussionErrorText(cause));
+      if (active.current) setError(discussionErrorText(cause));
     } finally {
-      setSubmitting(false);
+      if (active.current) setSubmitting(false);
     }
   }
 
@@ -64,7 +75,6 @@ export default function ReportContentModal({
     <Modal
       title="Report content"
       open={open}
-      afterOpenChange={(visible) => { if (visible) setError(undefined); }}
       onCancel={onClose}
       onOk={() => void submit()}
       confirmLoading={submitting}

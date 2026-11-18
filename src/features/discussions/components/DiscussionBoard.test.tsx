@@ -140,4 +140,20 @@ describe("DiscussionBoard", () => {
     await screen.findByText("Week 1 questions");
     expect(screen.getByRole("link", { name: "Open thread" })).toHaveAttribute("href", "/classes/class-1/discussions/discussion-1");
   });
+  it("filters and creates in lesson context, preserving links to the thread and lesson", async () => {
+    render(<App><MemoryRouter><DiscussionBoard classItem={classItem} basePath="/classes/class-1/discussions"
+      lesson={{ lesson_id: "lesson-1", title: "Introduction" }} /></MemoryRouter></App>);
+    await screen.findByText("Week 1 questions");
+    expect(api.listClassDiscussions).toHaveBeenCalledWith("class-1", { page: 1, size: 20, lesson_id: "lesson-1" }, expect.anything());
+    expect(screen.getByText("Lesson: Introduction")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to lesson" })).toHaveAttribute("href", "/classes/class-1/lessons/lesson-1");
+    expect(screen.getByRole("link", { name: "All class discussions" })).toHaveAttribute("href", "/classes/class-1/discussions");
+    expect(screen.getByRole("link", { name: "Open thread" })).toHaveAttribute("href", "/classes/class-1/discussions/discussion-1?lesson_id=lesson-1");
+    fireEvent.click(screen.getByRole("button", { name: /New post/ }));
+    fireEvent.change(screen.getByPlaceholderText("What is this discussion about?"), { target: { value: "Lesson question" } });
+    fireEvent.change(screen.getByPlaceholderText("Write your question or explanation."), { target: { value: "Please explain" } });
+    fireEvent.click(screen.getByRole("button", { name: "Publish post" }));
+    await waitFor(() => expect(api.createDiscussion).toHaveBeenCalledWith("class-1", { title: "Lesson question", content: "Please explain", lesson_id: "lesson-1" }));
+  });
+
 });

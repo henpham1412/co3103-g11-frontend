@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "antd";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -86,4 +86,55 @@ describe("ReportContentModal", () => {
     expect(await screen.findByText("You need an active membership in this class to read or post here.")).toBeInTheDocument();
     expect(screen.queryByText("Thank you. Your report has been submitted.")).not.toBeInTheDocument();
   });
+  it.each(["discussion-1", "discussion-2"])("discards canceled drafts and validation when reopening %s", async (nextId) => {
+    const onClose = vi.fn();
+    const props = { open: true, contentType: "DISCUSSION" as const, contentId: "discussion-1", contentTitle: "First post", onClose };
+    const view = render(<App><ReportContentModal {...props} /></App>);
+    fireEvent.click(screen.getByRole("button", { name: "Submit report" }));
+    await screen.findByText("Choose a reason for this report.");
+    fireEvent.click(screen.getByText("Harassment or bullying"));
+    fireEvent.change(screen.getByLabelText("Details (optional)"), { target: { value: "Only about A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    view.rerender(<App><ReportContentModal {...props} open={false} /></App>);
+    view.rerender(<App><ReportContentModal {...props} contentId={nextId} contentTitle="New session" /></App>);
+    expect(screen.getByLabelText("Details (optional)")).toHaveValue("");
+    expect(screen.getByRole("radio", { name: "Harassment or bullying" })).not.toBeChecked();
+    expect(screen.queryByText("Choose a reason for this report.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Other"));
+    fireEvent.click(screen.getByRole("button", { name: "Submit report" }));
+    await waitFor(() => expect(api.createContentReport).toHaveBeenCalledWith({ content_type: "DISCUSSION", content_id: nextId, reason: "OTHER", description: undefined }));
+    await waitFor(() => expect(screen.getByLabelText("Details (optional)")).toHaveValue(""));
+    expect(screen.getByRole("radio", { name: "Other" })).not.toBeChecked();
+  });
+
+  it.each(["resolve", "reject"])("isolates a new MATERIAL target from a pending old request (%s)", async (completion) => {
+    let resolve!: (value: unknown) => void;
+    let reject!: (error: unknown) => void;
+    api.createContentReport.mockReturnValue(new Promise((res, rej) => { resolve = res; reject = rej; }));
+    const onClose = vi.fn();
+    const onSubmitted = vi.fn();
+    const props = { open: true, contentType: "DISCUSSION" as const, contentId: "discussion-1", contentTitle: "First post", onClose, onSubmitted };
+    const view = render(<App><ReportContentModal {...props} /></App>);
+    fireEvent.click(screen.getByText("Spam or advertising"));
+    fireEvent.click(screen.getByRole("button", { name: "Submit report" }));
+    await waitFor(() => expect(api.createContentReport).toHaveBeenCalledTimes(1));
+    view.rerender(<App><ReportContentModal {...props} contentType="MATERIAL" contentId="material-2" contentTitle="Second target" /></App>);
+    expect(screen.getByRole("button", { name: "Submit report" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Details (optional)"), { target: { value: "New material draft" } });
+    await act(async () => {
+      if (completion === "resolve") resolve({ report_id: "old-report" });
+      else reject(reportFailure(409, "DUPLICATE_CONTENT_REPORT"));
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Details (optional)")).toHaveValue("New material draft");
+    expect(screen.queryByText("You have already reported this content.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Thank you. Your report has been submitted.")).not.toBeInTheDocument();
+    api.createContentReport.mockResolvedValue({ report_id: "new-report" });
+    fireEvent.click(screen.getByText("Other"));
+    fireEvent.click(screen.getByRole("button", { name: "Submit report" }));
+    await waitFor(() => expect(api.createContentReport).toHaveBeenLastCalledWith({ content_type: "MATERIAL", content_id: "material-2", reason: "OTHER", description: "New material draft" }));
+  });
+
 });

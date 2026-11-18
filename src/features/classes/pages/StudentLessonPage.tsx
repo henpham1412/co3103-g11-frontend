@@ -102,6 +102,10 @@ export default function StudentLessonPage() {
           <span>Lesson {navigation.current.sequence_order + 1}</span>
         </div>
 
+        <Link to={`/classes/${classId}/discussions?lesson_id=${encodeURIComponent(lessonId)}`}>
+          <Button>Lesson discussions</Button>
+        </Link>
+
         <Card className="student-lesson__content-card">
           <Typography.Title level={4}>Lesson content</Typography.Title>
           {page.lesson.description ? (

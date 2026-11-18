@@ -53,14 +53,22 @@ describe("discussion API client", () => {
 
   it("reads a single post and creates threads and replies on their own endpoints", async () => {
     const signal = new AbortController().signal;
-    await getDiscussion("d-1", signal);
+    await getDiscussion("d-1", { page: 2, size: 20 }, signal);
     await createDiscussion("c-1", { title: "Week 1", content: "Question", lesson_id: "l-1" });
     await createReply("d-1", { content: "Answer" });
-    expect(get).toHaveBeenCalledWith("/discussions/d-1", { signal });
+    expect(get).toHaveBeenCalledWith("/discussions/d-1", { params: { page: 2, size: 20 }, signal });
     expect(post).toHaveBeenNthCalledWith(1, "/classes/c-1/discussions", {
       title: "Week 1", content: "Question", lesson_id: "l-1",
     });
     expect(post).toHaveBeenNthCalledWith(2, "/discussions/d-1/replies", { content: "Answer" });
+  });
+
+  it("returns flat detail fields and the canonical descendant page without a wrapper", async () => {
+    const detail = { ...post1, replies: { items: [{ ...post1, discussion_id: "reply-1", parent_id: "d-1" }], page: 2, size: 20, total_items: 21, total_pages: 2 } };
+    get.mockResolvedValue({ data: detail });
+    await expect(getDiscussion("d-1", { page: 2, size: 20 })).resolves.toEqual(detail);
+    await getDiscussion("d-1");
+    expect(get).toHaveBeenLastCalledWith("/discussions/d-1", { params: {}, signal: undefined });
   });
 
   it("patches only the allowlisted fields and deletes without a body", async () => {

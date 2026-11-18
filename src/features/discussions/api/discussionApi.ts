@@ -2,6 +2,7 @@ import { lmsClient } from "../../../api/lmsClient";
 import type {
   CreateDiscussionInput,
   CreateReplyInput,
+  DiscussionDetail,
   DiscussionPage,
   DiscussionPost,
   UpdateDiscussionInput,
@@ -27,9 +28,10 @@ export async function listClassDiscussions(
 
 export async function getDiscussion(
   discussionId: string,
+  query: { page?: number; size?: number } = {},
   signal?: AbortSignal,
-): Promise<DiscussionPost> {
-  const response = await lmsClient.get<DiscussionPost>(`/discussions/${discussionId}`, { signal });
+): Promise<DiscussionDetail> {
+  const response = await lmsClient.get<DiscussionDetail>(`/discussions/${discussionId}`, { params: query, signal });
   return response.data;
 }
 

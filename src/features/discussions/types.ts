@@ -19,6 +19,11 @@ export interface DiscussionPage {
   total_pages: number;
 }
 
+// GET detail unwraps the post fields; mutations still return DiscussionPost.
+export interface DiscussionDetail extends DiscussionPost {
+  replies: DiscussionPage;
+}
+
 export interface CreateDiscussionInput {
   title: string;
   content: string;
