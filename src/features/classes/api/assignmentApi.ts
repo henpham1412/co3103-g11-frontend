@@ -71,11 +71,12 @@ export async function submitAssignmentFile(
  * Returns a Blob and the server-supplied filename (from Content-Disposition).
  */
 export async function downloadAssignmentAttachment(
+  assignmentId: string,
   attachmentId: string,
   signal?: AbortSignal,
 ): Promise<{ blob: Blob; filename: string }> {
   const response = await lmsClient.get<Blob>(
-    `/assignment-attachments/${attachmentId}/download`,
+    `/assignments/${assignmentId}/attachments/${attachmentId}/file`,
     { responseType: "blob", signal },
   );
   const disposition = response.headers["content-disposition"] as string | undefined;

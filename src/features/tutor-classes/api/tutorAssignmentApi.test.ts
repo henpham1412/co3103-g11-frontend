@@ -1,21 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { get, post, patch, deleteRequest } = vi.hoisted(() => ({
+const { get, post, patch } = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   patch: vi.fn(),
-  deleteRequest: vi.fn(),
 }));
 
 vi.mock("../../../api/lmsClient", () => ({
-  lmsClient: { get, post, patch, delete: deleteRequest },
+  lmsClient: { get, post, patch },
 }));
 
 import {
   createTutorAssignment,
-  deleteAssignmentAttachment,
   downloadSubmission,
   getSubmission,
+  getTutorActivity,
   getTutorAssignment,
   gradeSubmission,
   listSubmissions,
@@ -26,11 +25,10 @@ import {
 
 describe("tutor assignment API client", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    get.mockResolvedValue({ data: { items: [] } });
-    post.mockResolvedValue({ data: { activity_id: "act-1", assignment_id: "asg-1" } });
+    vi.resetAllMocks();
+    get.mockResolvedValue({ data: { content: [], number: 0, size: 20, totalElements: 0, totalPages: 0 } });
+    post.mockResolvedValue({ data: { activity_id: "act-1" } });
     patch.mockResolvedValue({ data: {} });
-    deleteRequest.mockResolvedValue({});
   });
 
   it("creates an assignment activity with settings", async () => {
@@ -65,24 +63,75 @@ describe("tutor assignment API client", () => {
     expect(patch).toHaveBeenCalledWith("/activities/act-1/assignment", { allow_late: false });
   });
 
-  it("manages reference attachments", async () => {
+  it("uploads a reference attachment and returns updated AssignmentConfiguration", async () => {
+    const updatedConfig = {
+      assignment_id: "asg-1",
+      activity_id: "act-1",
+      opening_time: null,
+      deadline: "2026-12-01T23:59:00Z",
+      allow_late: true,
+      allowed_file_types: ["PDF"],
+      max_file_size_mb: 10,
+      attachments: [
+        {
+          attachment_id: "att-1",
+          file_name: "sample.pdf",
+          mime_type: "application/pdf",
+          size_bytes: 6,
+        },
+      ],
+    };
+    post.mockResolvedValueOnce({ data: updatedConfig });
+
     const file = new File(["sample"], "sample.pdf", { type: "application/pdf" });
-    await uploadAssignmentAttachment("asg-1", file);
+    const result = await uploadAssignmentAttachment("asg-1", file);
     expect(post).toHaveBeenCalledWith(
       "/assignments/asg-1/attachments",
       expect.any(FormData),
       { headers: { "Content-Type": "multipart/form-data" } },
     );
-
-    await deleteAssignmentAttachment("att-1");
-    expect(deleteRequest).toHaveBeenCalledWith("/assignment-attachments/att-1");
+    expect(result).toEqual(updatedConfig);
   });
 
-  it("lists, views, grades, and downloads submissions", async () => {
-    await listSubmissions("asg-1", { page: 1, size: 20 });
+  it("maps Spring Data Page responses when listing submissions and calls real submission endpoints", async () => {
+    get.mockResolvedValueOnce({
+      data: {
+        content: [
+          {
+            submission_id: "sub-1",
+            class_member_id: "mem-1",
+            student_id: "stu-1",
+            student_name: "Alex Morgan",
+            file_name: "student.pdf",
+            submitted_at: "2026-10-15T10:00:00Z",
+            is_late: false,
+            status: "SUBMITTED",
+            score: null,
+          },
+        ],
+        number: 1,
+        size: 20,
+        totalElements: 25,
+        totalPages: 2,
+      },
+    });
+
+    const pageResult = await listSubmissions("asg-1", { page: 2, size: 20 });
     expect(get).toHaveBeenCalledWith("/assignments/asg-1/submissions", {
-      params: { page: 1, size: 20 },
+      params: { page: 2, size: 20 },
       signal: undefined,
+    });
+    expect(pageResult).toEqual({
+      items: [
+        expect.objectContaining({
+          submission_id: "sub-1",
+          student_name: "Alex Morgan",
+        }),
+      ],
+      page: 2,
+      size: 20,
+      total_items: 25,
+      total_pages: 2,
     });
 
     await getSubmission("sub-1");
@@ -101,13 +150,16 @@ describe("tutor assignment API client", () => {
     });
     const download = await downloadSubmission("sub-1");
     expect(get).toHaveBeenCalledWith(
-      "/submissions/sub-1/download",
+      "/submissions/sub-1/file",
       expect.objectContaining({ responseType: "blob" }),
     );
     expect(download.filename).toBe("student.pdf");
   });
 
-  it("retrieves tutor assignment details", async () => {
+  it("retrieves tutor activity metadata and assignment configuration separately", async () => {
+    await getTutorActivity("act-1");
+    expect(get).toHaveBeenCalledWith("/activities/act-1", { signal: undefined });
+
     await getTutorAssignment("act-1");
     expect(get).toHaveBeenCalledWith("/activities/act-1/assignment", { signal: undefined });
   });

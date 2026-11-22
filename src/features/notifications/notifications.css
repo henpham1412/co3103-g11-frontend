@@ -1,0 +1,137 @@
+.notifications-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.notifications-page__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.notifications-page__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.notifications-page__subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+.notifications-page__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.notifications-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notifications-page__item {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 16px 20px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.notifications-page__item--unread {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.notifications-page__item-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.notifications-page__item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.notifications-page__item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.notifications-page__item-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.notifications-page__item-message {
+  margin: 0;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.notifications-page__item-time {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.notifications-page__fallback-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #92400e;
+}
+
+.notifications-page__item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.notifications-page__pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.notifications-page__loading {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+@media (max-width: 640px) {
+  .notifications-page__item-row {
+    flex-direction: column;
+  }
+
+  .notifications-page__item-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .notifications-page__pagination {
+    justify-content: center;
+  }
+}

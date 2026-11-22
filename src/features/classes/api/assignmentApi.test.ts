@@ -51,9 +51,9 @@ describe("assignment API client", () => {
       data: new Blob(["attachment data"]),
       headers: { "content-disposition": 'attachment; filename="spec.pdf"' },
     });
-    const result = await downloadAssignmentAttachment("att-1");
+    const result = await downloadAssignmentAttachment("asg-1", "att-1");
     expect(get).toHaveBeenCalledWith(
-      "/assignment-attachments/att-1/download",
+      "/assignments/asg-1/attachments/att-1/file",
       expect.objectContaining({ responseType: "blob" }),
     );
     expect(result.filename).toBe("spec.pdf");

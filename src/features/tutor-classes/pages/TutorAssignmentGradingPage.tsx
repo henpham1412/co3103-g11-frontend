@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert, App, Button, Card, Col, Empty, Form, Input, InputNumber,
-  Row, Spin, Tag, Typography,
+  Pagination, Row, Spin, Tag, Typography,
 } from "antd";
 import {
   ArrowLeftOutlined, CheckCircleOutlined, ClockCircleOutlined, DownloadOutlined, FileOutlined,
@@ -12,6 +12,7 @@ import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayou
 import {
   downloadSubmission,
   getSubmission,
+  getTutorAssignment,
   gradeSubmission,
   listSubmissions,
   type SubmissionListItem,
@@ -19,13 +20,18 @@ import {
 import { triggerBlobDownload } from "../../classes/api/assignmentApi";
 import type { AssignmentSubmission } from "../../classes/api/assignmentApi";
 
+const PAGE_SIZE = 20;
+
 type GradeForm = { score: number; feedback?: string };
 
 export default function TutorAssignmentGradingPage() {
   const { classId = "", activityId = "" } = useParams();
   const { message } = App.useApp();
 
+  const assignmentIdRef = useRef<{ activityId: string; assignmentId: string } | undefined>(undefined);
   const [submissions, setSubmissions] = useState<SubmissionListItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string>();
 
@@ -37,12 +43,24 @@ export default function TutorAssignmentGradingPage() {
   const [downloading, setDownloading] = useState(false);
   const [form] = Form.useForm<GradeForm>();
 
-  const loadList = useCallback(async (signal?: AbortSignal) => {
+  const loadList = useCallback(async (targetPage: number, signal?: AbortSignal) => {
     setLoadingList(true);
     setListError(undefined);
     try {
-      const page = await listSubmissions(activityId, { size: 100 }, signal);
-      setSubmissions(page.items);
+      let resolvedId =
+        assignmentIdRef.current?.activityId === activityId
+          ? assignmentIdRef.current.assignmentId
+          : undefined;
+      if (!resolvedId) {
+        const cfg = await getTutorAssignment(activityId, signal);
+        if (signal?.aborted) return;
+        resolvedId = cfg.assignment_id;
+        assignmentIdRef.current = { activityId, assignmentId: resolvedId };
+      }
+      const result = await listSubmissions(resolvedId, { page: targetPage, size: PAGE_SIZE }, signal);
+      if (signal?.aborted) return;
+      setSubmissions(result.items);
+      setTotalItems(result.total_items);
     } catch (cause: unknown) {
       if (!signal?.aborted) setListError(normalizeApiError(cause).message);
     } finally {
@@ -53,17 +71,19 @@ export default function TutorAssignmentGradingPage() {
   useEffect(() => {
     const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadList(controller.signal);
+    void loadList(page, controller.signal);
     return () => controller.abort();
-  }, [loadList]);
+  }, [loadList, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!selectedId) { setDetail(undefined); return; }
     const controller = new AbortController();
     setLoadingDetail(true);
+    setDetail(undefined);
     getSubmission(selectedId, controller.signal)
       .then((sub) => {
+        if (controller.signal.aborted) return;
         setDetail(sub);
         form.setFieldsValue({
           score: sub.score ?? undefined,
@@ -100,12 +120,11 @@ export default function TutorAssignmentGradingPage() {
       const failure = normalizeApiError(cause);
       if (failure.code === "SUBMISSION_STATE_CHANGED") {
         message.error("The submission was updated by the student while you were grading. Reloading…");
-        if (selectedId) {
-          const refreshed = await getSubmission(selectedId).catch(() => undefined);
-          if (refreshed) {
-            setDetail(refreshed);
-            form.setFieldsValue({ score: refreshed.score ?? undefined, feedback: refreshed.feedback ?? undefined });
-          }
+        const conflictId = detail.submission_id;
+        const refreshed = await getSubmission(conflictId).catch(() => undefined);
+        if (refreshed && selectedId === conflictId) {
+          setDetail(refreshed);
+          form.setFieldsValue({ score: refreshed.score ?? undefined, feedback: refreshed.feedback ?? undefined });
         }
       } else {
         message.error(failure.message);
@@ -141,7 +160,7 @@ export default function TutorAssignmentGradingPage() {
 
         {listError && (
           <Alert type="error" showIcon title="Could not load submissions" description={listError}
-            action={<Button onClick={() => void loadList()}>Retry</Button>}
+            action={<Button onClick={() => void loadList(page)}>Retry</Button>}
             style={{ marginBottom: 16 }}
           />
         )}
@@ -150,7 +169,7 @@ export default function TutorAssignmentGradingPage() {
           {/* ── Left: student list ── */}
           <Col xs={24} md={8}>
             <Card
-              title={loadingList ? <Spin size="small" /> : `Submissions (${submissions.length})`}
+              title={loadingList ? <Spin size="small" /> : `Submissions (${totalItems})`}
               styles={{ body: { padding: 0 } }}
             >
               {!loadingList && submissions.length === 0 ? (
@@ -204,6 +223,18 @@ export default function TutorAssignmentGradingPage() {
                       </div>
                     </button>
                   ))}
+                  {totalItems > PAGE_SIZE && (
+                    <div style={{ padding: "12px 16px", display: "flex", justifyContent: "center" }}>
+                      <Pagination
+                        size="small"
+                        current={page}
+                        pageSize={PAGE_SIZE}
+                        total={totalItems}
+                        showSizeChanger={false}
+                        onChange={setPage}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </Card>

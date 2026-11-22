@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 import {
   Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber,
-  Popconfirm, Row, Select, Spin, Switch, Tabs, Tag, Typography, Upload,
+  Row, Select, Spin, Switch, Tabs, Tag, Typography, Upload,
 } from "antd";
-import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, PlusOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { normalizeApiError } from "@/api/apiError";
 import TutorWorkspaceLayout from "../../../components/layout/TutorWorkspaceLayout";
 import {
   createTutorAssignment,
-  deleteAssignmentAttachment,
+  getTutorActivity,
   getTutorAssignment,
   updateTutorAssignmentActivity,
   updateTutorAssignmentSettings,
@@ -46,20 +46,30 @@ export default function TutorAssignmentPage() {
   const [saving, setSaving] = useState(false);
   const [uploadFile, setUploadFile] = useState<File>();
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
-  const [deletingAttachment, setDeletingAttachment] = useState<string>();
   const [form] = Form.useForm<SettingsForm>();
 
   useEffect(() => {
     if (!activityId) return;
     const controller = new AbortController();
-    getTutorAssignment(activityId, controller.signal)
-      .then((value) => {
-        setAssignment(value);
+    Promise.all([
+      getTutorActivity(activityId, controller.signal),
+      getTutorAssignment(activityId, controller.signal),
+    ])
+      .then(([activity, value]) => {
+        if (controller.signal.aborted) return;
+        const merged: TutorAssignmentDetails = {
+          ...value,
+          title: activity.title,
+          description: activity.description,
+          sequence_order: activity.sequence_order,
+          status: activity.status,
+        };
+        setAssignment(merged);
         form.setFieldsValue({
-          title: value.title ?? "",
-          description: value.description ?? "",
-          sequence_order: value.sequence_order ?? 0,
-          status: value.status ?? "HIDDEN",
+          title: activity.title,
+          description: activity.description ?? "",
+          sequence_order: activity.sequence_order,
+          status: activity.status,
           opening_time: value.opening_time ? dayjs(value.opening_time) : undefined,
           deadline: dayjs(value.deadline),
           allow_late: value.allow_late,
@@ -67,8 +77,12 @@ export default function TutorAssignmentPage() {
           max_file_size_mb: value.max_file_size_mb ?? undefined,
         });
       })
-      .catch((cause: unknown) => setError(normalizeApiError(cause).message))
-      .finally(() => setLoading(false));
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setError(normalizeApiError(cause).message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => controller.abort();
   }, [activityId, form]);
 
@@ -132,35 +146,29 @@ export default function TutorAssignmentPage() {
 
   async function handleUploadAttachment() {
     if (!assignment || !uploadFile) return;
+    const selectedName = uploadFile.name;
     setUploadingAttachment(true);
     try {
-      const att = await uploadAssignmentAttachment(assignment.assignment_id, uploadFile);
+      const updatedConfig = await uploadAssignmentAttachment(assignment.assignment_id, uploadFile);
       setAssignment((current) =>
-        current ? { ...current, attachments: [...current.attachments, att] } : current,
+        current
+          ? {
+              ...current,
+              opening_time: updatedConfig.opening_time,
+              deadline: updatedConfig.deadline,
+              allow_late: updatedConfig.allow_late,
+              allowed_file_types: updatedConfig.allowed_file_types,
+              max_file_size_mb: updatedConfig.max_file_size_mb,
+              attachments: updatedConfig.attachments,
+            }
+          : current,
       );
       setUploadFile(undefined);
-      message.success(`${att.file_name} uploaded.`);
+      message.success(`${selectedName} uploaded.`);
     } catch (cause: unknown) {
       message.error(normalizeApiError(cause).message);
     } finally {
       setUploadingAttachment(false);
-    }
-  }
-
-  async function handleDeleteAttachment(att: TutorAssignmentAttachment) {
-    setDeletingAttachment(att.attachment_id);
-    try {
-      await deleteAssignmentAttachment(att.attachment_id);
-      setAssignment((current) =>
-        current
-          ? { ...current, attachments: current.attachments.filter((a) => a.attachment_id !== att.attachment_id) }
-          : current,
-      );
-      message.success(`${att.file_name} removed.`);
-    } catch (cause: unknown) {
-      message.error(normalizeApiError(cause).message);
-    } finally {
-      setDeletingAttachment(undefined);
     }
   }
 
@@ -204,10 +212,8 @@ export default function TutorAssignmentPage() {
                           attachments={assignment?.attachments ?? []}
                           uploadFile={uploadFile}
                           uploading={uploadingAttachment}
-                          deletingId={deletingAttachment}
                           onFileSelect={setUploadFile}
                           onUpload={() => void handleUploadAttachment()}
-                          onDelete={(att) => void handleDeleteAttachment(att)}
                         />
                       ),
                     },
@@ -340,15 +346,13 @@ function SettingsFormView({
 }
 
 function AttachmentsPanel({
-  attachments, uploadFile, uploading, deletingId, onFileSelect, onUpload, onDelete,
+  attachments, uploadFile, uploading, onFileSelect, onUpload,
 }: {
   attachments: TutorAssignmentAttachment[];
   uploadFile: File | undefined;
   uploading: boolean;
-  deletingId: string | undefined;
   onFileSelect: (file: File) => void;
   onUpload: () => void;
-  onDelete: (att: TutorAssignmentAttachment) => void;
 }) {
   return (
     <Card
@@ -396,17 +400,6 @@ function AttachmentsPanel({
                   {(att.size_bytes / 1024).toFixed(0)} KB
                 </Typography.Text>
               </div>
-              <Popconfirm
-                title="Delete this attachment?"
-                onConfirm={() => onDelete(att)}
-              >
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  loading={deletingId === att.attachment_id}
-                />
-              </Popconfirm>
             </div>
           ))}
         </div>

@@ -35,7 +35,7 @@ export default function AssessmentHistoryPage() {
       <main style={{ maxWidth: 1120, margin: "0 auto", padding: 32 }}>
         <Typography.Title level={2}>Assessment history</Typography.Title>
         <Typography.Paragraph type="secondary">
-          Your quiz attempts and assignment submissions across classes.
+          Your quiz attempts and results across classes.
         </Typography.Paragraph>
         {loading ? (
           <div role="status"><Spin /> Loading history…</div>

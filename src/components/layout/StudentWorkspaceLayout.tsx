@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { RightOutlined } from "@ant-design/icons";
 import { Avatar, Button } from "antd";
 import { Link, useLocation } from "react-router-dom";
@@ -21,6 +21,7 @@ export default function StudentWorkspaceLayout({ children, currentPage }: Studen
     { label: "Dashboard", path: "/dashboard", icon: <WorkspaceIcon name="layout-dashboard" /> },
     { label: "Classes", path: "/classes", icon: <WorkspaceIcon name="graduation-cap" /> },
     { label: "Discussion", path: "/discussion", icon: <WorkspaceIcon name="message-square" /> },
+    { label: "Notifications", path: "/notifications", icon: <WorkspaceIcon name="bell" /> },
   ];
 
   return (
@@ -63,7 +64,7 @@ function TypographyLabel({ children }: { children: ReactNode }) {
 }
 
 function WorkspaceIcon({ name, size = 19 }: {
-  name: "layout-dashboard" | "book-open" | "graduation-cap" | "message-square";
+  name: "layout-dashboard" | "book-open" | "graduation-cap" | "message-square" | "bell";
   size?: number;
 }) {
   const common = { "aria-hidden": true as const, width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -72,5 +73,6 @@ function WorkspaceIcon({ name, size = 19 }: {
     case "book-open": return <svg {...common}><path d="M12 7v14" /><path d="M3 18V5a2 2 0 0 1 2-2h2a5 5 0 0 1 5 5 5 5 0 0 1 5-5h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2h-2a5 5 0 0 0-5 2 5 5 0 0 0-5-2H5a2 2 0 0 1-2-2Z" /></svg>;
     case "graduation-cap": return <svg {...common}><path d="m2 10 10-5 10 5-10 5-10-5Z" /><path d="M6 12v5c3.3 3 8.7 3 12 0v-5" /><path d="M22 10v6" /></svg>;
     case "message-square": return <svg {...common}><path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" /></svg>;
+    case "bell": return <svg {...common}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>;
   }
 }

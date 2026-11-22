@@ -78,7 +78,7 @@ function renderPage() {
 
 describe("AssignmentActivityPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("renders not-submitted view with instructions and upload controls", async () => {
@@ -94,6 +94,48 @@ describe("AssignmentActivityPage", () => {
     expect(screen.getByText("Drop a file here or choose one")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit assignment" })).toBeDisabled();
     expect(screen.getByText("instructions.pdf")).toBeInTheDocument();
+  });
+
+  it("downloads reference attachments using assignmentId and attachmentId", async () => {
+    const blob = new Blob(["pdf-content"]);
+    api.getAssignmentConfig.mockResolvedValue(baseConfig);
+    api.getMySubmission.mockRejectedValue(notFoundError());
+    api.downloadAssignmentAttachment.mockResolvedValue({ blob, filename: "instructions.pdf" });
+
+    renderPage();
+
+    expect(await screen.findByText("instructions.pdf")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Download/i }));
+
+    await waitFor(() => {
+      expect(api.downloadAssignmentAttachment).toHaveBeenCalledWith("asg-1", "att-1");
+      expect(api.triggerBlobDownload).toHaveBeenCalledWith(blob, "instructions.pdf");
+    });
+  });
+
+  it("shows visible validation errors for disallowed file types and oversized files", async () => {
+    api.getAssignmentConfig.mockResolvedValue(baseConfig);
+    api.getMySubmission.mockRejectedValue(notFoundError());
+
+    renderPage();
+
+    await screen.findByText("Not submitted");
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeInTheDocument();
+
+    const disallowedFile = new File(["binary"], "malware.exe", { type: "application/octet-stream" });
+    fireEvent.change(fileInput, { target: { files: [disallowedFile] } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Unsupported file type/i);
+    expect(screen.getByRole("button", { name: "Submit assignment" })).toBeDisabled();
+
+    const oversizedFile = new File(["x"], "huge.pdf", { type: "application/pdf" });
+    Object.defineProperty(oversizedFile, "size", { value: 21 * 1024 * 1024 });
+    fireEvent.change(fileInput, { target: { files: [oversizedFile] } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/exceeds the maximum allowed size of 20 MB/i);
+    expect(screen.getByRole("button", { name: "Submit assignment" })).toBeDisabled();
   });
 
   it("renders submitted view when work has already been submitted", async () => {

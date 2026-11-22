@@ -1,5 +1,16 @@
 import { lmsClient } from "../../../api/lmsClient";
-import type { AssignmentSubmission } from "../../classes/api/assignmentApi";
+import type { AssignmentConfiguration, AssignmentSubmission } from "../../classes/api/assignmentApi";
+
+export interface TutorActivityMetadata {
+  activity_id: string;
+  lesson_id: string;
+  title: string;
+  description: string | null;
+  activity_type: "QUIZ" | "ASSIGNMENT";
+  sequence_order: number;
+  status: "PUBLISHED" | "HIDDEN";
+  created_at?: string;
+}
 
 export interface TutorAssignmentDetails {
   assignment_id: string;
@@ -43,6 +54,22 @@ export interface SubmissionListResponse {
   total_pages: number;
 }
 
+interface SpringSubmissionPage {
+  content: SubmissionListItem[];
+  number: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export async function getTutorActivity(activityId: string, signal?: AbortSignal) {
+  const response = await lmsClient.get<TutorActivityMetadata>(
+    `/activities/${activityId}`,
+    { signal },
+  );
+  return response.data;
+}
+
 export async function getTutorAssignment(activityId: string, signal?: AbortSignal) {
   const response = await lmsClient.get<TutorAssignmentDetails>(
     `/activities/${activityId}/assignment`,
@@ -67,7 +94,7 @@ export async function createTutorAssignment(
     };
   },
 ) {
-  const response = await lmsClient.post<TutorAssignmentDetails>(
+  const response = await lmsClient.post<TutorActivityMetadata>(
     `/lessons/${lessonId}/activities`,
     { activity_type: "ASSIGNMENT", ...payload },
   );
@@ -94,10 +121,13 @@ export async function updateTutorAssignmentSettings(
   await lmsClient.patch(`/activities/${activityId}/assignment`, payload);
 }
 
-export async function uploadAssignmentAttachment(assignmentId: string, file: File) {
+export async function uploadAssignmentAttachment(
+  assignmentId: string,
+  file: File,
+): Promise<AssignmentConfiguration> {
   const form = new FormData();
   form.append("file", file);
-  const response = await lmsClient.post<TutorAssignmentAttachment>(
+  const response = await lmsClient.post<AssignmentConfiguration>(
     `/assignments/${assignmentId}/attachments`,
     form,
     { headers: { "Content-Type": "multipart/form-data" } },
@@ -105,20 +135,26 @@ export async function uploadAssignmentAttachment(assignmentId: string, file: Fil
   return response.data;
 }
 
-export async function deleteAssignmentAttachment(attachmentId: string) {
-  await lmsClient.delete(`/assignment-attachments/${attachmentId}`);
-}
-
 export async function listSubmissions(
   assignmentId: string,
   params: { page?: number; size?: number; status?: "SUBMITTED" | "GRADED" } = {},
   signal?: AbortSignal,
-) {
-  const response = await lmsClient.get<SubmissionListResponse>(
+): Promise<SubmissionListResponse> {
+  const response = await lmsClient.get<SpringSubmissionPage | SubmissionListResponse>(
     `/assignments/${assignmentId}/submissions`,
     { params, signal },
   );
-  return response.data;
+  const raw = response.data;
+  if ("content" in raw) {
+    return {
+      items: Array.isArray(raw.content) ? raw.content : [],
+      page: raw.number + 1,
+      size: raw.size,
+      total_items: raw.totalElements,
+      total_pages: raw.totalPages,
+    };
+  }
+  return raw;
 }
 
 export async function getSubmission(submissionId: string, signal?: AbortSignal) {
@@ -148,7 +184,7 @@ export async function downloadSubmission(
   signal?: AbortSignal,
 ): Promise<{ blob: Blob; filename: string }> {
   const response = await lmsClient.get<Blob>(
-    `/submissions/${submissionId}/download`,
+    `/submissions/${submissionId}/file`,
     { responseType: "blob", signal },
   );
   const disposition = response.headers["content-disposition"] as string | undefined;

@@ -82,9 +82,10 @@ export default function AssignmentActivityPage({ activityTitle, activityDescript
   }
 
   async function handleDownloadAttachment(attachment: AssignmentAttachment) {
+    if (!config) return;
     setDownloadingAttachment(attachment.attachment_id);
     try {
-      const { blob, filename } = await downloadAssignmentAttachment(attachment.attachment_id);
+      const { blob, filename } = await downloadAssignmentAttachment(config.assignment_id, attachment.attachment_id);
       triggerBlobDownload(blob, filename);
     } catch (cause: unknown) {
       message.error(`Could not download ${attachment.file_name}: ${normalizeApiError(cause).message}`);
@@ -231,6 +232,7 @@ function SubmissionPanel({
   onSubmit: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState<string>();
 
   if (submission?.status === "GRADED") {
     return (
@@ -316,6 +318,20 @@ function SubmissionPanel({
     : undefined;
   const maxBytes = config.max_file_size_mb ? config.max_file_size_mb * 1024 * 1024 : undefined;
 
+  function validateFile(file: File): string | null {
+    if (config.allowed_file_types?.length) {
+      const ext = file.name.includes(".") ? file.name.split(".").pop()?.toUpperCase() ?? "" : "";
+      const allowed = config.allowed_file_types.map((t) => t.replace(/^\./, "").toUpperCase());
+      if (!allowed.includes(ext)) {
+        return `Unsupported file type. Allowed types: ${config.allowed_file_types.join(", ")}.`;
+      }
+    }
+    if (maxBytes && file.size > maxBytes) {
+      return `File exceeds the maximum allowed size of ${config.max_file_size_mb} MB.`;
+    }
+    return null;
+  }
+
   return (
     <Card>
       <Typography.Title level={4} style={{ margin: "0 0 4px" }}>Not submitted</Typography.Title>
@@ -330,6 +346,15 @@ function SubmissionPanel({
       {!notOpenYet && pastDeadline && config.allow_late && (
         <Alert type="warning" showIcon title="Past deadline — this will be marked Late." style={{ marginTop: 12 }} />
       )}
+      {fileError && (
+        <Alert
+          type="error"
+          showIcon
+          title="File cannot be uploaded"
+          description={fileError}
+          style={{ marginTop: 12 }}
+        />
+      )}
 
       {canSubmit && (
         <>
@@ -340,13 +365,15 @@ function SubmissionPanel({
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];
+              e.target.value = "";
               if (!file) return;
-              if (maxBytes && file.size > maxBytes) {
-                // message shown by Upload.Dragger below; handled there
+              const validationError = validateFile(file);
+              if (validationError) {
+                setFileError(validationError);
                 return;
               }
+              setFileError(undefined);
               onFileSelect(file);
-              e.target.value = "";
             }}
           />
           <Upload.Dragger
@@ -355,10 +382,14 @@ function SubmissionPanel({
             maxCount={1}
             showUploadList={false}
             beforeUpload={(file) => {
-              if (maxBytes && file.size > maxBytes) {
+              const raw = file as unknown as File;
+              const validationError = validateFile(raw);
+              if (validationError) {
+                setFileError(validationError);
                 return Upload.LIST_IGNORE;
               }
-              onFileSelect(file as unknown as File);
+              setFileError(undefined);
+              onFileSelect(raw);
               return false;
             }}
           >

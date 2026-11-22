@@ -1,15 +1,15 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "antd";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   createTutorAssignment: vi.fn(),
+  getTutorActivity: vi.fn(),
   getTutorAssignment: vi.fn(),
   updateTutorAssignmentActivity: vi.fn(),
   updateTutorAssignmentSettings: vi.fn(),
   uploadAssignmentAttachment: vi.fn(),
-  deleteAssignmentAttachment: vi.fn(),
 }));
 
 vi.mock("../api/tutorAssignmentApi", () => api);
@@ -54,7 +54,7 @@ function renderEdit() {
 
 describe("TutorAssignmentPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("renders creation form with settings fields", async () => {
@@ -64,14 +64,18 @@ describe("TutorAssignmentPage", () => {
     expect(screen.getByRole("button", { name: "Create Assignment" })).toBeInTheDocument();
   });
 
-  it("loads and displays existing assignment settings and attachments", async () => {
-    api.getTutorAssignment.mockResolvedValue({
-      assignment_id: "asg-1",
+  it("loads activity metadata separately from assignment config and updates attachments from upload response", async () => {
+    api.getTutorActivity.mockResolvedValue({
       activity_id: "act-1",
       title: "Assignment: Use Cases",
       description: "Implement use cases",
+      sequence_order: 3,
       status: "PUBLISHED",
-      sequence_order: 1,
+    });
+
+    api.getTutorAssignment.mockResolvedValue({
+      assignment_id: "asg-1",
+      activity_id: "act-1",
       opening_time: null,
       deadline: "2099-12-31T23:59:59Z",
       allow_late: true,
@@ -87,15 +91,57 @@ describe("TutorAssignmentPage", () => {
       ],
     });
 
+    api.uploadAssignmentAttachment.mockResolvedValue({
+      assignment_id: "asg-1",
+      activity_id: "act-1",
+      opening_time: null,
+      deadline: "2099-12-31T23:59:59Z",
+      allow_late: true,
+      allowed_file_types: ["PDF"],
+      max_file_size_mb: 20,
+      attachments: [
+        {
+          attachment_id: "att-1",
+          file_name: "reference.pdf",
+          mime_type: "application/pdf",
+          size_bytes: 1024,
+        },
+        {
+          attachment_id: "att-2",
+          file_name: "rubric.pdf",
+          mime_type: "application/pdf",
+          size_bytes: 2048,
+        },
+      ],
+    });
+
     renderEdit();
 
     expect(await screen.findByRole("heading", { level: 2, name: "Assignment Editor" })).toBeInTheDocument();
+    expect(api.getTutorActivity).toHaveBeenCalledWith("act-1", expect.any(AbortSignal));
+    expect(api.getTutorAssignment).toHaveBeenCalledWith("act-1", expect.any(AbortSignal));
+    expect(await screen.findByDisplayValue("Assignment: Use Cases")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Implement use cases")).toBeInTheDocument();
     expect(await screen.findByText("Reference Files (1)")).toBeInTheDocument();
     expect(screen.getByText("Submissions & Grading")).toBeInTheDocument();
 
     // Click on attachments tab
     fireEvent.click(screen.getByText("Reference Files (1)"));
     expect(await screen.findByText("reference.pdf")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete/i })).not.toBeInTheDocument();
+
+    // Upload a second reference file and verify list updates from AssignmentConfigurationResponse
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeInTheDocument();
+    const file = new File(["rubric"], "rubric.pdf", { type: "application/pdf" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Upload" }));
+
+    await waitFor(() => {
+      expect(api.uploadAssignmentAttachment).toHaveBeenCalledWith("asg-1", file);
+    });
+    expect(await screen.findByText("rubric.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Reference Files (2)")).toBeInTheDocument();
 
     // Click on grading tab
     fireEvent.click(screen.getByText("Submissions & Grading"));

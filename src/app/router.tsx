@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { Navigate, createBrowserRouter } from "react-router-dom";
+import { Navigate, createBrowserRouter, matchRoutes } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
@@ -14,6 +14,7 @@ import StudentLessonPage from "../features/classes/pages/StudentLessonPage";
 import DiscussionBoardPage from "../features/discussions/pages/DiscussionBoardPage";
 import DiscussionHubPage from "../features/discussions/pages/DiscussionHubPage";
 import DiscussionThreadPage from "../features/discussions/pages/DiscussionThreadPage";
+import NotificationsPage from "../features/notifications/pages/NotificationsPage";
 import TutorClassDetailPage from "../features/tutor-classes/pages/TutorClassDetailPage";
 import TutorClassManagementPage from "../features/tutor-classes/pages/TutorClassManagementPage";
 import TutorContentManagementPage from "../features/tutor-classes/pages/TutorContentManagementPage";
@@ -25,6 +26,15 @@ import TutorRoute from "../features/tutor-classes/TutorRoute";
 import App from "./App";
 import NotFoundPage from "./NotFoundPage";
 import WorkspaceSectionPage from "./WorkspaceSectionPage";
+
+export function hasAppRoute(path: string): boolean {
+  const matches = matchRoutes(router.routes, path);
+  return Boolean(
+    matches &&
+      matches.length > 0 &&
+      matches.every((match) => match.route.path !== "*" && !match.route.path?.endsWith("/*")),
+  );
+}
 
 const authFallback = (
   <AuthLayout>
@@ -79,6 +89,7 @@ export const router = createBrowserRouter([
           { path: "/assessment-history", element: <AssessmentHistoryPage /> },
           { path: "/dashboard", element: <WorkspaceSectionPage /> },
           { path: "/discussion", element: <DiscussionHubPage variant="student" /> },
+          { path: "/notifications", element: <NotificationsPage variant="student" isRouteAvailable={hasAppRoute} /> },
           {
             element: <TutorRoute />,
             children: [
@@ -92,8 +103,8 @@ export const router = createBrowserRouter([
               { path: "/tutor/classes/:classId/content/assignment/new", element: <TutorAssignmentPage /> },
               { path: "/tutor/classes/:classId/content/assignment/:activityId", element: <TutorAssignmentPage /> },
               { path: "/tutor/classes/:classId/content/assignment/:activityId/grade", element: <TutorAssignmentGradingPage /> },
-              { path: "/tutor/discussion", element: <TutorWorkspaceSectionPage /> },
               { path: "/tutor/discussion", element: <DiscussionHubPage variant="tutor" /> },
+              { path: "/tutor/notifications", element: <NotificationsPage variant="tutor" isRouteAvailable={hasAppRoute} /> },
               { path: "/tutor/classes/:classId/discussions", element: <DiscussionBoardPage variant="tutor" /> },
               {
                 path: "/tutor/classes/:classId/discussions/:discussionId",
