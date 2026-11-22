@@ -14,7 +14,9 @@ import AssessmentHistoryPage from '@/features/classes/pages/AssessmentHistoryPag
 import DiscussionBoardPage from '@/features/discussions/pages/DiscussionBoardPage'
 import DiscussionHubPage from '@/features/discussions/pages/DiscussionHubPage'
 import DiscussionThreadPage from '@/features/discussions/pages/DiscussionThreadPage'
-import { router } from './router'
+import NotificationsPage from '@/features/notifications/pages/NotificationsPage'
+import { resolveNotificationTarget } from '@/features/notifications/utils/notificationTarget'
+import { hasAppRoute, router } from './router'
 
 afterAll(() => router.dispose())
 
@@ -28,6 +30,7 @@ describe('merged FE-4/FE-5/FE-6 routes', () => {
     ['/tutor/classes/class-123/content/quiz/new', TutorQuizPage],
     ['/tutor/classes/class-123/content/quiz/activity-123', TutorQuizPage],
     ['/tutor/discussion', DiscussionHubPage],
+    ['/tutor/notifications', NotificationsPage],
     ['/tutor/classes/class-123/discussions', DiscussionBoardPage],
     ['/tutor/classes/class-123/discussions/discussion-123', DiscussionThreadPage],
   ])('keeps %s under the shared authentication and tutor guards', (path, component) => {
@@ -43,6 +46,7 @@ describe('merged FE-4/FE-5/FE-6 routes', () => {
     ['/classes/class-123/lessons/lesson-123/activities/activity-123', ClassActivityPage],
     ['/assessment-history', AssessmentHistoryPage],
     ['/discussion', DiscussionHubPage],
+    ['/notifications', NotificationsPage],
     ['/classes/class-123/discussions', DiscussionBoardPage],
     ['/classes/class-123/discussions/discussion-123', DiscussionThreadPage],
   ])('keeps %s on the existing student route', (path, component) => {
@@ -51,5 +55,33 @@ describe('merged FE-4/FE-5/FE-6 routes', () => {
     expect(types).toContain(ProtectedRoute)
     expect(types).not.toContain(TutorRoute)
     expect(types.at(-1)).toBe(component)
+  })
+})
+
+describe('FE-11 real-router target resolution', () => {
+  it('excludes the wildcard catch-all route and falls back when FE-7 grading route is not mounted', () => {
+    const gradingPath = '/tutor/classes/class-123/content/assignment/act-42/grade'
+    expect(hasAppRoute(gradingPath)).toBe(false)
+    expect(hasAppRoute('/unknown-route-that-matches-wildcard')).toBe(false)
+
+    expect(resolveNotificationTarget(gradingPath, hasAppRoute)).toEqual({
+      href: '/tutor/classes/class-123/content',
+      isFallback: true,
+      fallbackNotice: 'Direct assignment grading navigation is not yet available; opening class content instead.',
+    })
+  })
+
+  it('recognizes valid registered routes and keeps unsafe URLs rejected', () => {
+    expect(hasAppRoute('/classes/class-123')).toBe(true)
+    expect(hasAppRoute('/tutor/classes/class-123/content')).toBe(true)
+    expect(hasAppRoute('/notifications')).toBe(true)
+    expect(hasAppRoute('/tutor/notifications')).toBe(true)
+
+    expect(resolveNotificationTarget('/classes/class-123', hasAppRoute)).toEqual({
+      href: '/classes/class-123',
+      isFallback: false,
+    })
+    expect(resolveNotificationTarget('https://evil.example/phish', hasAppRoute)).toBeNull()
+    expect(resolveNotificationTarget('//evil.example/path', hasAppRoute)).toBeNull()
   })
 })
