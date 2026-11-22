@@ -35,3 +35,47 @@ it('offers recovery when a later page becomes empty', async () => {
   show(); await screen.findByText('Quiz 1'); fireEvent.click(screen.getByTitle('2')); await screen.findByText('No assessment history on this page.');
   fireEvent.click(screen.getByRole('button', { name: 'Back to first page' })); expect(await screen.findByText('Quiz 1')).toBeInTheDocument();
 })
+
+it('renders assignment history items with submission_id and assignment status', async () => {
+  server.use(http.get(endpoint, () => HttpResponse.json({
+    items: [
+      {
+        attempt_id: 'sub-1',
+        submission_id: 'sub-1',
+        class_id: 'class-123',
+        activity_id: 'activity-2',
+        activity_title: 'Assignment 1',
+        type: 'ASSIGNMENT',
+        status: 'GRADED',
+        score: 95,
+        submitted_at: '2026-11-02T10:00:00Z',
+        feedback: 'Excellent work',
+        is_late: true,
+      },
+      {
+        attempt_id: 'sub-2',
+        submission_id: 'sub-2',
+        class_id: 'class-123',
+        activity_id: 'activity-3',
+        activity_title: 'Assignment 2',
+        type: 'ASSIGNMENT',
+        status: 'SUBMITTED',
+        score: null,
+        submitted_at: '2026-11-03T10:00:00Z',
+        feedback: null,
+        is_late: false,
+      },
+    ],
+    page: 1,
+    size: 20,
+    total_items: 2,
+    total_pages: 1,
+  })));
+  show();
+  expect(await screen.findByText('Assignment 1')).toBeInTheDocument();
+  expect(screen.getByText('Assignment 2')).toBeInTheDocument();
+  expect(screen.getByText('95%')).toBeInTheDocument();
+  expect(screen.getByText('Graded')).toBeInTheDocument();
+  expect(screen.getByText('Late')).toBeInTheDocument();
+  expect(screen.getByText('Excellent work')).toBeInTheDocument();
+});
