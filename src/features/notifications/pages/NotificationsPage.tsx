@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, Empty, Pagination, Segmented, Spin, Tag } from "antd";
 import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom";
@@ -51,6 +51,11 @@ export default function NotificationsPage({ variant, isRouteAvailable }: Notific
   const requestKey = `${filter}:${page}:${reloadNonce}`;
   const loading = loadedKey !== requestKey;
 
+  const viewRef = useRef({ filter, page, data, loading });
+  useEffect(() => {
+    viewRef.current = { filter, page, data, loading };
+  }, [filter, page, data, loading]);
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -63,6 +68,10 @@ export default function NotificationsPage({ variant, isRouteAvailable }: Notific
     listNotifications(query, controller.signal)
       .then((result) => {
         if (!controller.signal.aborted) {
+          if (result.items.length === 0 && page > 1 && result.total_pages > 0 && page > result.total_pages) {
+            setPage(result.total_pages);
+            return;
+          }
           setData(result);
           setError(null);
           setLoadedKey(requestKey);
@@ -81,7 +90,7 @@ export default function NotificationsPage({ variant, isRouteAvailable }: Notific
   }, [filter, page, reloadNonce, requestKey]);
 
   const handleMarkRead = useCallback(
-    async (item: NotificationItem): Promise<boolean> => {
+    async (item: NotificationItem, options?: { skipRefetch?: boolean }): Promise<boolean> => {
       if (item.is_read || markingIds.has(item.notification_id)) {
         return true;
       }
@@ -89,25 +98,34 @@ export default function NotificationsPage({ variant, isRouteAvailable }: Notific
       setMarkingIds((prev) => new Set(prev).add(item.notification_id));
       try {
         const updated = await markNotificationRead(item.notification_id);
-        setData((prev) => {
-          if (!prev) return prev;
-          if (filter === "unread") {
-            const remaining = prev.items.filter((entry) => entry.notification_id !== item.notification_id);
-            const nextTotal = Math.max(0, prev.total_items - 1);
-            return {
-              ...prev,
-              items: remaining,
-              total_items: nextTotal,
-              total_pages: Math.ceil(nextTotal / prev.size),
-            };
+        const current = viewRef.current;
+
+        if (current.filter === "all") {
+          setData((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  items: prev.items.map((entry) =>
+                    entry.notification_id === updated.notification_id ? updated : entry,
+                  ),
+                }
+              : prev,
+          );
+          if (!options?.skipRefetch && current.loading) {
+            setReloadNonce((n) => n + 1);
           }
-          return {
-            ...prev,
-            items: prev.items.map((entry) =>
-              entry.notification_id === item.notification_id ? updated : entry,
-            ),
-          };
-        });
+        } else if (!options?.skipRefetch) {
+          if (
+            current.filter === "unread" &&
+            current.page > 1 &&
+            current.data &&
+            current.data.items.length <= 1
+          ) {
+            setPage(current.page - 1);
+          } else {
+            setReloadNonce((n) => n + 1);
+          }
+        }
         return true;
       } catch (err: unknown) {
         setActionError(notificationErrorMessage(err, "Could not update notification status. Please try again."));
@@ -120,13 +138,13 @@ export default function NotificationsPage({ variant, isRouteAvailable }: Notific
         });
       }
     },
-    [filter, markingIds],
+    [markingIds],
   );
 
   const handleOpenResource = useCallback(
     async (item: NotificationItem, href: string) => {
       if (!item.is_read) {
-        const ok = await handleMarkRead(item);
+        const ok = await handleMarkRead(item, { skipRefetch: true });
         if (!ok) return;
       }
       void navigate(href);

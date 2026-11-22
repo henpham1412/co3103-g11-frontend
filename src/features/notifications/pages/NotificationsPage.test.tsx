@@ -54,7 +54,7 @@ function renderPage(
 
 describe("NotificationsPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("shows loading state and renders persisted notifications with unread badge", async () => {
@@ -221,5 +221,99 @@ describe("NotificationsPage", () => {
     const markBtn = await screen.findByRole("button", { name: "Mark as read" });
     fireEvent.click(markBtn);
     expect(await screen.findByText("This notification is no longer available or has expired.")).toBeInTheDocument();
+  });
+
+  it("retains the notification with updated read state when switching from Unread to All while PATCH is pending", async () => {
+    const unreadItem = makeNotification({ notification_id: "notif-race", title: "Race item" });
+    const otherItem = makeNotification({
+      notification_id: "notif-other",
+      title: "Already read item",
+      is_read: true,
+      read_at: "2026-11-22T04:00:00Z",
+    });
+
+    api.listNotifications
+      .mockResolvedValueOnce({ items: [unreadItem, otherItem], page: 1, size: 20, total_items: 2, total_pages: 1 })
+      .mockResolvedValueOnce({ items: [unreadItem], page: 1, size: 20, total_items: 1, total_pages: 1 })
+      .mockResolvedValueOnce({ items: [unreadItem, otherItem], page: 1, size: 20, total_items: 2, total_pages: 1 });
+
+    let resolvePatch!: (value: NotificationItem) => void;
+    api.markNotificationRead.mockReturnValue(new Promise<NotificationItem>((resolve) => { resolvePatch = resolve; }));
+
+    renderPage("student");
+    expect(await screen.findByText("Race item")).toBeInTheDocument();
+
+    // Switch to Unread and start PATCH
+    fireEvent.click(screen.getByRole("radio", { name: "Unread" }));
+    const markBtn = await screen.findByRole("button", { name: "Mark as read" });
+    fireEvent.click(markBtn);
+
+    // Switch back to All BEFORE PATCH resolves
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
+    expect(await screen.findByText("Already read item")).toBeInTheDocument();
+    expect(screen.getByText("2 notifications in the last 90 days")).toBeInTheDocument();
+
+    // Now resolve PATCH — All must keep Race item, keep total_items = 2, and mark Race item read
+    resolvePatch({ ...unreadItem, is_read: true, read_at: "2026-11-22T05:15:00Z" });
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Mark as read" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Race item")).toBeInTheDocument();
+    expect(screen.getByText("Already read item")).toBeInTheDocument();
+    expect(screen.getByText("2 notifications in the last 90 days")).toBeInTheDocument();
+  });
+
+  it("refetches and backfills a full Unread page when more unread notifications exist on later pages", async () => {
+    const first = makeNotification({ notification_id: "u-1", title: "Unread #1" });
+    const second = makeNotification({ notification_id: "u-2", title: "Unread #2" });
+    const backfilled = makeNotification({ notification_id: "u-21", title: "Backfilled #21" });
+
+    api.listNotifications
+      .mockResolvedValueOnce({ items: [first], page: 1, size: 20, total_items: 21, total_pages: 2 })
+      .mockResolvedValueOnce({ items: [first, second], page: 1, size: 20, total_items: 21, total_pages: 2 })
+      .mockResolvedValueOnce({ items: [second, backfilled], page: 1, size: 20, total_items: 20, total_pages: 1 });
+    api.markNotificationRead.mockResolvedValueOnce({ ...first, is_read: true, read_at: "2026-11-22T05:20:00Z" });
+
+    renderPage("student");
+    expect(await screen.findByText("Unread #1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Unread" }));
+    expect(await screen.findByText("21 unread notifications")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Mark as read" })[0]);
+    expect(await screen.findByText("Backfilled #21")).toBeInTheDocument();
+    expect(screen.getByText("20 unread notifications")).toBeInTheDocument();
+    expect(screen.queryByText("Unread #1")).not.toBeInTheDocument();
+  });
+
+  it("returns to the previous valid page when marking the final item on the last Unread page", async () => {
+    const page1Item = makeNotification({ notification_id: "u-p1", title: "Page 1 Unread" });
+    const page2LastItem = makeNotification({ notification_id: "u-p2", title: "Last Item On Page 2" });
+
+    api.listNotifications
+      .mockResolvedValueOnce({ items: [page1Item], page: 1, size: 20, total_items: 21, total_pages: 2 })
+      .mockResolvedValueOnce({ items: [page1Item], page: 1, size: 20, total_items: 21, total_pages: 2 })
+      .mockResolvedValueOnce({ items: [page2LastItem], page: 2, size: 20, total_items: 21, total_pages: 2 })
+      .mockResolvedValueOnce({ items: [page1Item], page: 1, size: 20, total_items: 20, total_pages: 1 });
+    api.markNotificationRead.mockResolvedValueOnce({ ...page2LastItem, is_read: true, read_at: "2026-11-22T05:25:00Z" });
+
+    renderPage("student");
+    expect(await screen.findByText("Page 1 Unread")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Unread" }));
+    expect(await screen.findByText("21 unread notifications")).toBeInTheDocument();
+
+    // Navigate to page 2
+    fireEvent.click(screen.getByTitle("2"));
+    expect(await screen.findByText("Last Item On Page 2")).toBeInTheDocument();
+
+    // Mark the sole item on page 2 as read -> must return to page 1
+    fireEvent.click(screen.getByRole("button", { name: "Mark as read" }));
+    expect(await screen.findByText("Page 1 Unread")).toBeInTheDocument();
+    expect(screen.getByText("20 unread notifications")).toBeInTheDocument();
+    expect(api.listNotifications).toHaveBeenLastCalledWith(
+      { page: 1, size: 20, is_read: false },
+      expect.any(AbortSignal),
+    );
   });
 });
