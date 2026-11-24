@@ -1,0 +1,180 @@
+.admin-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.admin-page__header h1 {
+  font-size: 26px;
+  margin: 0 0 6px;
+  color: #172033;
+}
+
+.admin-page__header p {
+  margin: 0;
+  color: #53647d;
+  font-size: 14px;
+}
+
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 18px;
+}
+
+.admin-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 170px;
+}
+
+.admin-filter-field--wide {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.admin-filter-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #53647d;
+}
+
+.admin-filter-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-mono {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.admin-drawer-section {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-confirm-box {
+  border: 1px solid #d7e7ff;
+  background: #f5f9ff;
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-confirm-box--danger {
+  border-color: #ffccc7;
+  background: #fff2f0;
+}
+
+.admin-content-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8fafc;
+  border: 1px solid #e0e6ef;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 13px;
+  color: #172033;
+  margin: 0;
+}
+
+.admin-reports-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.admin-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.admin-metric-card {
+  border: 1px solid #e0e6ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px 16px;
+}
+
+.admin-metric-card__label {
+  font-size: 12px;
+  color: #53647d;
+  margin-bottom: 6px;
+}
+
+.admin-metric-card__value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #172033;
+}
+
+.admin-metric-card__sub {
+  font-size: 12px;
+  color: #71809a;
+  margin-top: 4px;
+}
+
+.admin-audit-diff {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-audit-diff__pane {
+  border: 1px solid #e0e6ef;
+  border-radius: 6px;
+  padding: 12px;
+  background: #f8fafc;
+  display: grid;
+  gap: 6px;
+}
+
+.admin-datetime-input {
+  height: 32px;
+  padding: 4px 11px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 14px;
+  color: #172033;
+  background: #fff;
+}
+
+.admin-datetime-input:focus {
+  outline: 2px solid #2859d9;
+  outline-offset: 1px;
+  border-color: #2859d9;
+}
+
+@media (max-width: 760px) {
+  .admin-page__header {
+    flex-direction: column;
+  }
+
+  .admin-audit-diff {
+    grid-template-columns: 1fr;
+  }
+}
