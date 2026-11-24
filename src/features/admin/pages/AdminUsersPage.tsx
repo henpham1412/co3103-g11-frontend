@@ -199,17 +199,22 @@ export default function AdminUsersPage() {
     setMutationError(null)
     setSuccessNotice(null)
     const targetId = activeUser.user_id
+    const actorUserId = currentUserId
+    const revokeForCurrentSession = revokeAccess
     try {
       const updated = await updateAdminUserAccess(targetId, patchPayload)
-      if (!mountedRef.current) return
 
-      if (currentUserId && updated.user_id.toLowerCase() === currentUserId.toLowerCase()
+      if (actorUserId && updated.user_id.toLowerCase() === actorUserId.toLowerCase()
         && (updated.lms_role !== 'ADMINISTRATOR' || updated.access_status !== 'ACTIVE')) {
-        // Self-demotion or self-suspension revokes local LMS admin UI immediately while keeping Central Identity session intact.
-        revokeAccess()
-        navigate('/', { replace: true })
+        // Revoke this session's local LMS admin UI immediately even if the user navigated to another Admin page while PATCH was pending.
+        const revoked = revokeForCurrentSession()
+        if (revoked && mountedRef.current) {
+          navigate('/', { replace: true })
+        }
         return
       }
+
+      if (!mountedRef.current) return
 
       setDetailState({ key: detailKey, user: updated })
       setDraft({ userId: updated.user_id, lms_role: updated.lms_role, access_status: updated.access_status })

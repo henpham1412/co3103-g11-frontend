@@ -23,7 +23,10 @@ function mountUsersPage() {
       children: [{
         path: '/admin',
         element: <AdminWorkspaceLayout />,
-        children: [{ path: 'users', element: <AdminUsersPage /> }],
+        children: [
+          { path: 'users', element: <AdminUsersPage /> },
+          { path: 'audit-logs', element: <div>Audit Logs Workspace</div> },
+        ],
       }],
     },
   ], { initialEntries: ['/admin/users'] })
@@ -285,6 +288,84 @@ describe('AdminUsersPage', () => {
         expect(within(drawer).getByText('second@example.test')).toBeInTheDocument()
         expect(within(drawer).queryByText('first@example.test')).not.toBeInTheDocument()
       })
+    } finally { view.close() }
+  })
+
+  it('revokes admin workspace after navigating to another Admin page while self-demotion PATCH is pending, without unexpected redirect', async () => {
+    const selfAdmin = adminUser()
+    const demotedSelf = adminUser({ lms_role: 'TUTOR' })
+    let resolvePatch!: (response: Response) => void
+
+    server.use(
+      http.get(`${BASE}/admin/users/${USER_ID}`, () => HttpResponse.json(selfAdmin)),
+      http.get(`${BASE}/admin/users`, () => HttpResponse.json({ ...page([selfAdmin]), last: true })),
+      http.patch(`${BASE}/admin/users/${USER_ID}`, () =>
+        new Promise<Response>((resolve) => { resolvePatch = resolve })),
+    )
+
+    const view = mountUsersPage()
+    try {
+      expect(await screen.findByText('Local administrator')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Manage' }))
+      const drawer = await screen.findByRole('dialog')
+      await within(drawer).findByText('admin@example.test')
+
+      selectAntOption('Edit LMS role', 'Tutor')
+      fireEvent.click(within(drawer).getByRole('button', { name: 'Review changes' }))
+      fireEvent.click(within(drawer).getByRole('button', { name: 'Confirm update' }))
+
+      await waitFor(() => expect(resolvePatch).toBeTypeOf('function'))
+
+      // Navigate away from AdminUsersPage to another Admin page before PATCH completes
+      fireEvent.click(screen.getByRole('link', { name: 'Audit Logs' }))
+      expect(await screen.findByText('Audit Logs Workspace')).toBeInTheDocument()
+      expect(view.memoryRouter.state.location.pathname).toBe('/admin/audit-logs')
+
+      // Resolve delayed self-demotion PATCH
+      resolvePatch(HttpResponse.json(demotedSelf))
+
+      // Admin workspace must be revoked immediately while staying on /admin/audit-logs (no unexpected navigation) and keeping Central Identity session
+      expect(await screen.findByText('Administrator access is not available')).toBeInTheDocument()
+      expect(screen.queryByText('Audit Logs Workspace')).not.toBeInTheDocument()
+      expect(screen.queryByRole('navigation', { name: 'Administrator navigation' })).not.toBeInTheDocument()
+      expect(view.memoryRouter.state.location.pathname).toBe('/admin/audit-logs')
+      expect(tokenStorage.getSession()).not.toBeNull()
+    } finally { view.close() }
+  })
+
+  it('ignores a stale self-demotion PATCH completion after the user signs out and starts a new session', async () => {
+    const selfAdmin = adminUser()
+    const demotedSelf = adminUser({ lms_role: 'TUTOR' })
+    let resolvePatch!: (response: Response) => void
+
+    server.use(
+      http.get(`${BASE}/admin/users/${USER_ID}`, () => HttpResponse.json(selfAdmin)),
+      http.get(`${BASE}/admin/users`, () => HttpResponse.json({ ...page([selfAdmin]), last: true })),
+      http.patch(`${BASE}/admin/users/${USER_ID}`, () =>
+        new Promise<Response>((resolve) => { resolvePatch = resolve })),
+    )
+
+    const view = mountUsersPage()
+    try {
+      expect(await screen.findByText('Local administrator')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Manage' }))
+      const drawer = await screen.findByRole('dialog')
+      await within(drawer).findByText('admin@example.test')
+
+      selectAntOption('Edit LMS role', 'Tutor')
+      fireEvent.click(within(drawer).getByRole('button', { name: 'Review changes' }))
+      fireEvent.click(within(drawer).getByRole('button', { name: 'Confirm update' }))
+      await waitFor(() => expect(resolvePatch).toBeTypeOf('function'))
+
+      // Navigate away to overview (unmounting AdminRoute/SessionAdminAccess) before stale PATCH resolves
+      fireEvent.click(screen.getByRole('link', { name: /G11 LMS/i }))
+      expect(await screen.findByText('Authenticated Overview')).toBeInTheDocument()
+
+      // Resolve stale PATCH; it must be a clean no-op with no errors or spurious redirects
+      resolvePatch(HttpResponse.json(demotedSelf))
+      await act(async () => {})
+      expect(view.memoryRouter.state.location.pathname).toBe('/')
+      expect(screen.getByText('Authenticated Overview')).toBeInTheDocument()
     } finally { view.close() }
   })
 })

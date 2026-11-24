@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Descriptions, Drawer, Empty, Pagination, Select, Space, Spin, Tag, Typography } from 'antd'
-import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, LinkOutlined, ReloadOutlined } from '@ant-design/icons'
 import { normalizeApiError } from '@/api/apiError'
 import {
   downloadAdminReportTarget,
@@ -8,7 +8,7 @@ import {
   listAdminContentReports,
   reviewAdminContentReport,
 } from '../api/adminApi'
-import { formatAdminError, formatAdminTimestamp, triggerFileDownload } from '../adminFormat'
+import { formatAdminError, formatAdminTimestamp, parseSafeExternalHttpUrl, triggerFileDownload } from '../adminFormat'
 import type {
   AdminContentReport,
   AdminPage,
@@ -463,7 +463,7 @@ export default function AdminContentReportsPage() {
                     <pre className="admin-content-preview">{activeReport.target.content}</pre>
                   )}
 
-                  {activeReport.content_type === 'MATERIAL' && activeReport.target.file_available && (
+                  {activeReport.content_type === 'MATERIAL' && activeReport.target.file_available === true && (
                     <div>
                       <Button
                         icon={<DownloadOutlined />}
@@ -475,6 +475,48 @@ export default function AdminContentReportsPage() {
                       </Button>
                     </div>
                   )}
+
+                  {activeReport.content_type === 'MATERIAL' && activeReport.target.file_available === false && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      title="Stored material file missing"
+                      description="The reported material record still exists, but its locally stored file is missing or unavailable for download."
+                    />
+                  )}
+
+                  {activeReport.content_type === 'MATERIAL'
+                    && activeReport.target.file_available === null
+                    && activeReport.target.file_url !== null && (() => {
+                      const safeExternalUrl = parseSafeExternalHttpUrl(activeReport.target.file_url)
+                      if (!safeExternalUrl) {
+                        return (
+                          <Alert
+                            type="warning"
+                            showIcon
+                            title="External URL blocked"
+                            description="The reported external material URL uses an unsupported scheme or invalid format and cannot be opened."
+                          />
+                        )
+                      }
+                      return (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <Typography.Text strong>External Material URL</Typography.Text>
+                          <div className="admin-mono">{safeExternalUrl}</div>
+                          <div>
+                            <a
+                              href={safeExternalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                            >
+                              <LinkOutlined aria-hidden />
+                              <span>Open external material</span>
+                            </a>
+                          </div>
+                        </div>
+                      )
+                    })()}
                 </div>
               )}
             </div>

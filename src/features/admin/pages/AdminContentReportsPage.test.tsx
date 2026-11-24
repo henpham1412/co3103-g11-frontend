@@ -198,4 +198,77 @@ describe('AdminContentReportsPage', () => {
       expect(within(drawer).queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
     } finally { view.close() }
   })
+
+  it('displays safe external HTTP/HTTPS material links without Bearer download, blocks unsafe URLs, and distinguishes missing local files', async () => {
+    const secondId = '20000000-0000-0000-0000-000000000002'
+    const thirdId = '20000000-0000-0000-0000-000000000003'
+    const externalReport = contentReport({ report_id: REPORT_ID, content_type: 'MATERIAL' })
+    const unsafeReport = contentReport({ report_id: secondId, content_type: 'MATERIAL' })
+    const missingLocalReport = contentReport({ report_id: thirdId, content_type: 'MATERIAL' })
+
+    server.use(
+      http.get(`${BASE}/admin/users/${USER_ID}`, () => HttpResponse.json(adminUser())),
+      http.get(`${BASE}/admin/content-reports`, () =>
+        HttpResponse.json(page([externalReport, unsafeReport, missingLocalReport]))),
+      http.get(`${BASE}/admin/content-reports/${REPORT_ID}`, () =>
+        HttpResponse.json({
+          ...externalReport,
+          target: moderationTarget({
+            title: 'External Reference',
+            material_type: 'URL',
+            file_url: 'https://docs.example.org/guide?page=1',
+            file_available: null,
+          }),
+        })),
+      http.get(`${BASE}/admin/content-reports/${secondId}`, () =>
+        HttpResponse.json({
+          ...unsafeReport,
+          target: moderationTarget({
+            title: 'Unsafe Link Material',
+            material_type: 'URL',
+            file_url: 'javascript:alert(1)',
+            file_available: null,
+          }),
+        })),
+      http.get(`${BASE}/admin/content-reports/${thirdId}`, () =>
+        HttpResponse.json({
+          ...missingLocalReport,
+          target: moderationTarget({
+            title: 'Missing Stored PDF',
+            material_type: 'DOCUMENT',
+            file_url: null,
+            file_available: false,
+          }),
+        })),
+    )
+
+    const view = mountReportsPage()
+    try {
+      expect(await screen.findByText(REPORT_ID)).toBeInTheDocument()
+      const reviewButtons = screen.getAllByRole('button', { name: 'Review' })
+
+      // 1. Safe external HTTP/HTTPS URL
+      fireEvent.click(reviewButtons[0]!)
+      const drawer = await screen.findByRole('dialog')
+      expect(await within(drawer).findByText('External Reference')).toBeInTheDocument()
+      const link = within(drawer).getByRole('link', { name: /Open external material/i })
+      expect(link).toHaveAttribute('href', 'https://docs.example.org/guide?page=1')
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+      expect(within(drawer).queryByRole('button', { name: /Download reported file/i })).not.toBeInTheDocument()
+
+      // 2. Unsafe scheme rejected
+      fireEvent.click(reviewButtons[1]!)
+      expect(await within(drawer).findByText('Unsafe Link Material')).toBeInTheDocument()
+      expect(within(drawer).getByText('External URL blocked')).toBeInTheDocument()
+      expect(within(drawer).queryByRole('link', { name: /Open external material/i })).not.toBeInTheDocument()
+
+      // 3. Missing local stored file explicitly distinguished from deleted target
+      fireEvent.click(reviewButtons[2]!)
+      expect(await within(drawer).findByText('Missing Stored PDF')).toBeInTheDocument()
+      expect(within(drawer).getByText('Stored material file missing')).toBeInTheDocument()
+      expect(within(drawer).queryByText('Target content unavailable')).not.toBeInTheDocument()
+      expect(within(drawer).queryByRole('button', { name: /Download reported file/i })).not.toBeInTheDocument()
+    } finally { view.close() }
+  })
 })

@@ -13,6 +13,7 @@ import { deferred } from '@/test/renderAuthPage'
 import AdminEntry from '../AdminEntry'
 import AdminRoute from '../AdminRoute'
 import AdminWorkspaceLayout from '../AdminWorkspaceLayout'
+import { useAdminAccess } from './AdminAccessContext'
 import { getAdminAuditLog } from '../api/adminApi'
 import { adminUser, LOG_ID, OTHER_ID, USER_ID } from '@/test/fixtures/admin'
 
@@ -385,4 +386,44 @@ it.each(['same token', 'new token'] as const)('ignores a late Admin 403 belongin
   await act(async () => pending.resolve(new HttpResponse(null, { status: 403 })))
   expect(screen.getByRole('heading', { name: 'Protected administrator content' })).toBeInTheDocument()
   expect(notify).not.toHaveBeenCalled()
+})
+
+it('ignores a stale revokeAccess callback after token rotation or session change while revoking an active session', async () => {
+  const captured: Array<() => boolean> = []
+  function CaptureRevoke() {
+    const { revokeAccess } = useAdminAccess()
+    return <button onClick={() => { captured.push(revokeAccess) }}>Capture revoke</button>
+  }
+  const renderWithCapture = () => {
+    const value: AuthContextValue = { state, logout, login: vi.fn(), retrySessionVerification: vi.fn(), refreshCurrentUser: vi.fn() }
+    return <AuthContext value={value}><MemoryRouter initialEntries={['/admin/users']}><Routes>
+      <Route element={<ProtectedRoute />}><Route element={<AdminRoute />}>
+        <Route path="/admin/users" element={<><h1>Protected administrator content</h1><CaptureRevoke /></>} />
+      </Route></Route>
+    </Routes></MemoryRouter></AuthContext>
+  }
+
+  server.use(http.get(`${base}/admin/users/${USER_ID}`, () => HttpResponse.json(adminUser())))
+  const view = render(renderWithCapture())
+  await screen.findByRole('heading', { name: 'Protected administrator content' })
+  fireEvent.click(screen.getByRole('button', { name: 'Capture revoke' }))
+  const staleRevoke = captured[0]!
+
+  // Rotate token within same session
+  changeSession({ status: 'authenticated', user: validUser, session: { ...snapshot.session!, accessToken: 'rotated-token' } })
+  view.rerender(renderWithCapture())
+  await screen.findByRole('heading', { name: 'Protected administrator content' })
+
+  // Old token's revokeAccess must be ignored and return false
+  let revoked = true
+  await act(async () => { revoked = staleRevoke() })
+  expect(revoked).toBe(false)
+  expect(screen.getByRole('heading', { name: 'Protected administrator content' })).toBeInTheDocument()
+
+  // Current active token's revokeAccess must revoke immediately and return true
+  fireEvent.click(screen.getByRole('button', { name: 'Capture revoke' }))
+  const activeRevoke = captured[1]!
+  await act(async () => { revoked = activeRevoke() })
+  expect(revoked).toBe(true)
+  await screen.findByText('Administrator access is not available')
 })
