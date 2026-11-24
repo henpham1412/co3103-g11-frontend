@@ -10,7 +10,7 @@ import { AdminAccessContext, type AdminAccess } from './AdminAccessContext'
 export function AdminAccessProvider({ children }: PropsWithChildren) {
   const { state } = useAuth()
   if (state.status !== 'authenticated') {
-    return <AdminAccessContext value={{ access: 'denied', recheck: () => {} }}>{children}</AdminAccessContext>
+    return <AdminAccessContext value={{ access: 'denied', recheck: () => {}, revokeAccess: () => {} }}>{children}</AdminAccessContext>
   }
   // A different account/session unmounts all capability state. Role claims in storage are never read.
   return <SessionAdminAccess key={`${state.session.sessionId}:${state.user.userId}`}
@@ -25,6 +25,10 @@ function SessionAdminAccess({ children, session, userId }: PropsWithChildren<{ s
   // A probe has its own scope, but background checks can retain an already verified
   // decision for this identity/token. Session replacement must still hide old children.
   const requestOwner = useMemo(() => ({ token: session.accessToken }), [session.accessToken])
+  const revokeAccess = useCallback(() => {
+    setRevokedOwner(requestOwner)
+    probe.current?.abort()
+  }, [requestOwner])
   const scope = useMemo(() => ({ owner: requestOwner, attempt }), [requestOwner, attempt])
   const [result, setResult] = useState<{ scope: typeof scope; access: AdminAccess } | null>(null)
 
@@ -89,7 +93,7 @@ function SessionAdminAccess({ children, session, userId }: PropsWithChildren<{ s
   const previouslyAuthorized = result?.access === 'allowed' && result.scope.owner === requestOwner
   const access = revokedOwner === requestOwner ? 'denied' : result?.scope === scope ? result.access
     : previouslyAuthorized ? 'allowed' : 'checking'
-  return <AdminAccessContext value={{ access, recheck }}>
+  return <AdminAccessContext value={{ access, recheck, revokeAccess }}>
     {children}
   </AdminAccessContext>
 }

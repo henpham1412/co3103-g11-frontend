@@ -5,11 +5,14 @@ import { http, HttpResponse } from 'msw'
 import { afterAll, beforeEach, expect, it } from 'vitest'
 import { lmsClient } from '@/api/lmsClient'
 import AdminRoute from '@/features/admin/AdminRoute'
-import AdminSectionPage from '@/features/admin/AdminSectionPage'
 import AdminWorkspaceLayout from '@/features/admin/AdminWorkspaceLayout'
+import AdminUsersPage from '@/features/admin/pages/AdminUsersPage'
+import AdminContentReportsPage from '@/features/admin/pages/AdminContentReportsPage'
+import AdminReportsPage from '@/features/admin/pages/AdminReportsPage'
+import AdminAuditLogsPage from '@/features/admin/pages/AdminAuditLogsPage'
 import { ProtectedRoute } from '@/features/auth/components/ProtectedRoute'
 import { tokenStorage } from '@/features/auth/services/tokenStorage'
-import { adminUser, USER_ID } from '@/test/fixtures/admin'
+import { adminUser, auditLog, contentReport, operationalData, page, USER_ID } from '@/test/fixtures/admin'
 import { authSession, createToken, validUser } from '@/test/fixtures/auth'
 import { identityApiUrl, server } from '@/test/server'
 import AppProviders from './providers'
@@ -18,14 +21,20 @@ import { router } from './router'
 afterAll(() => router.dispose())
 beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
 
-it.each(['/admin', '/admin/users', '/admin/content-reports', '/admin/reports', '/admin/audit-logs'])(
-  'registers %s under authentication, the Admin guard, and the workspace layout', path => {
+it.each([
+  ['/admin', Navigate],
+  ['/admin/users', AdminUsersPage],
+  ['/admin/content-reports', AdminContentReportsPage],
+  ['/admin/reports', AdminReportsPage],
+  ['/admin/audit-logs', AdminAuditLogsPage],
+] as const)(
+  'registers %s under authentication, the Admin guard, and the workspace layout', (path, component) => {
     const matches = matchRoutes(router.routes, path)!
     const types = matches.map(({ route }) => isValidElement(route.element) ? route.element.type : null)
     expect(types.filter(type => type === ProtectedRoute)).toHaveLength(1)
     expect(types.filter(type => type === AdminRoute)).toHaveLength(1)
     expect(types).toContain(AdminWorkspaceLayout)
-    expect(types.at(-1)).toBe(path === '/admin' ? Navigate : AdminSectionPage)
+    expect(types.at(-1)).toBe(component)
     if (path === '/admin') expect(matches.at(-1)?.route.element).toMatchObject({ props: { to: '/admin/users', replace: true } })
   },
 )
@@ -45,18 +54,31 @@ it('redirects an anonymous deep link to login and retains the destination', asyn
   } finally { view.close() }
 })
 
-it('uses real session restoration, canonical Admin verification, redirect, and navigation without loading business data', async () => {
+it('uses real session restoration, canonical Admin verification, redirect, and navigation across all four screens', async () => {
   const session = authSession()
   tokenStorage.saveSession(session)
   let probes = 0
-  server.use(http.get(`${lmsClient.defaults.baseURL}/admin/users/${USER_ID}`, ({ request }) => {
-    expect(request.headers.get('Authorization')).toBe(`Bearer ${session.accessToken}`)
-    probes += 1
-    return HttpResponse.json(adminUser())
-  }))
+  server.use(
+    http.get(`${lmsClient.defaults.baseURL}/admin/users/${USER_ID}`, ({ request }) => {
+      expect(request.headers.get('Authorization')).toBe(`Bearer ${session.accessToken}`)
+      probes += 1
+      return HttpResponse.json(adminUser())
+    }),
+    http.get(`${lmsClient.defaults.baseURL}/admin/users`, () =>
+      HttpResponse.json({ ...page([adminUser()]), last: true })),
+    http.get(`${lmsClient.defaults.baseURL}/admin/content-reports`, () =>
+      HttpResponse.json(page([contentReport()]))),
+    http.get(`${lmsClient.defaults.baseURL}/admin/reports/:type`, ({ params }) => {
+      const type = String(params.type) as keyof typeof operationalData
+      return HttpResponse.json({ report_type: type, filters: {}, data: operationalData[type] })
+    }),
+    http.get(`${lmsClient.defaults.baseURL}/admin/audit-logs`, () =>
+      HttpResponse.json(page([auditLog()]))),
+  )
   const view = mount('/admin')
   try {
     await screen.findByRole('heading', { name: 'User Access Management' })
+    await screen.findByText('Local administrator')
     expect(view.memoryRouter.state.location.pathname).toBe('/admin/users')
     expect(probes).toBe(1)
     for (const [label, heading] of [['Content Reports', 'Content Report Moderation'], ['Operational Reports', 'Operational Reports'], ['Audit Logs', 'Audit Logs']]) {
@@ -64,8 +86,8 @@ it('uses real session restoration, canonical Admin verification, redirect, and n
       await screen.findByRole('heading', { name: heading })
       expect(screen.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page')
     }
+    await screen.findByText('LMS_USER_ACCESS_UPDATED')
     expect(probes).toBe(1)
-    expect(screen.getByText('This section is not available yet.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     await waitFor(() => expect(view.memoryRouter.state.location.pathname).toBe('/login'))
     expect(screen.queryByRole('navigation', { name: 'Administrator navigation' })).not.toBeInTheDocument()

@@ -6,7 +6,10 @@ import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { PublicOnlyRoute } from "@/features/auth/components/PublicOnlyRoute";
 import AdminRoute from "@/features/admin/AdminRoute";
 import AdminWorkspaceLayout from "@/features/admin/AdminWorkspaceLayout";
-import AdminSectionPage from "@/features/admin/AdminSectionPage";
+import AdminUsersPage from "@/features/admin/pages/AdminUsersPage";
+import AdminContentReportsPage from "@/features/admin/pages/AdminContentReportsPage";
+import AdminReportsPage from "@/features/admin/pages/AdminReportsPage";
+import AdminAuditLogsPage from "@/features/admin/pages/AdminAuditLogsPage";
 
 import ClassActivityPage from "../features/classes/pages/ClassActivityPage";
 import AssessmentHistoryPage from "../features/classes/pages/AssessmentHistoryPage";
@@ -75,10 +78,10 @@ export const router = createBrowserRouter([
               element: <AdminWorkspaceLayout />,
               children: [
                 { index: true, element: <Navigate to="/admin/users" replace /> },
-                { path: 'users', element: <AdminSectionPage title="User Access Management" /> },
-                { path: 'content-reports', element: <AdminSectionPage title="Content Report Moderation" /> },
-                { path: 'reports', element: <AdminSectionPage title="Operational Reports" /> },
-                { path: 'audit-logs', element: <AdminSectionPage title="Audit Logs" /> },
+                { path: 'users', element: <AdminUsersPage /> },
+                { path: 'content-reports', element: <AdminContentReportsPage /> },
+                { path: 'reports', element: <AdminReportsPage /> },
+                { path: 'audit-logs', element: <AdminAuditLogsPage /> },
               ],
             }],
           },

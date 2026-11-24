@@ -1,8 +1,8 @@
-# FE-12 Step 1 — Contract and access foundation
+# FE-12 — Administrator Interface Architecture & Scope
 
-Approved MVP: LMS-local User Access, Content Report Moderation, Operational Reports
-(Enrollment, Completion, Assessment), and read-only Audit Logs. Step 1 only registers
-guarded route shells and clients; it does not implement the four functional screens.
+Approved MVP: LMS-local User Access Management (`/admin/users`), Content Report
+Moderation (`/admin/content-reports`), Operational Reports (`/admin/reports` for
+Enrollment, Completion, and Assessment), and read-only Audit Logs (`/admin/audit-logs`).
 
 ## Open requirement / backlog discrepancy
 
@@ -19,7 +19,9 @@ access. Central Identity session restoration remains unchanged. No browser-store
 role or JWT role grants access. Decisions are in memory, reset on session/account/
 token changes, and revalidated on mount, window focus, or becoming visible. Expected
 probe 403s do not show the global permission toast; 401 handling is unchanged.
-An authenticated Admin API 403 removes privileged children and their local state.
+An authenticated Admin API 403 or confirmed self-demotion/self-suspension revokes
+privileged children and their local state immediately while keeping the Central
+Identity session intact.
 There is no server-push role notification: external revocation is observed on the
 next request/revalidation. Backend authorization remains mandatory for every call.
 
@@ -30,10 +32,10 @@ next request/revalidation. Backend authorization remains mandatory for every cal
 - Only user role/status and report review status have PATCH clients. No create/
   delete/global account/audit mutations or class management operations are added.
 - Operational reports accept only optional `class_id`; All classes is the default.
-  A validated Class UUID input belongs to the later reports screen. No class-list
-  dropdown, invented endpoint, date filter, or analytics dashboard is provided.
+  A validated Class UUID input filters all three reports. No class-list dropdown,
+  invented endpoint, date filter, or analytics dashboard is provided.
 - Audit IDs are UUIDs; redacted details remain unavailable. File downloads use
   the report-scoped endpoint, never a target-supplied URL with Bearer credentials.
 
-The next steps (functional pages and real backend/browser integration) require
-separate authorization. Step 1 does not claim live three-service E2E verification.
+Automated Vitest/MSW verification covers all four screens and access boundaries;
+live three-service browser/PostgreSQL E2E verification remains tracked under QA-1/QA-2.
