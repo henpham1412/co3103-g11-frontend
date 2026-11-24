@@ -78,7 +78,7 @@ export function installAuthInterceptors(options: AuthInterceptorOptions): () => 
             try { await purgeOnce('unauthorized', generation) } catch { /* HTTP error takes precedence. */ }
           } else if (error.response?.status === 403 && client === lmsClient) {
             config._authHandled = true
-            options.onLmsForbidden()
+            if (!config.suppressLmsForbiddenMessage) options.onLmsForbidden()
           }
         }
       }

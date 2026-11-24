@@ -168,6 +168,19 @@ describe('request authentication', () => {
 })
 
 describe('response authentication', () => {
+  it('silences an expected capability 403 while retaining Bearer authentication and 401 session expiry', async () => {
+    const adapter: AxiosAdapter = async config => {
+      expect(config.headers.get('Authorization')).toBe(`Bearer ${snapshot.session!.accessToken}`)
+      return failure(403)(config)
+    }
+    await expect(lmsClient.get('/admin/users/self', { suppressLmsForbiddenMessage: true, adapter }))
+      .rejects.toMatchObject({ response: { status: 403 } })
+    expect(onLmsForbidden).not.toHaveBeenCalled()
+    expect(purgeSession).not.toHaveBeenCalled()
+    await expect(lmsClient.get('/admin/users/self', { suppressLmsForbiddenMessage: true, adapter: failure(401) }))
+      .rejects.toMatchObject({ response: { status: 401 } })
+    expect(purgeSession).toHaveBeenCalledExactlyOnceWith('unauthorized', 1)
+  })
   it('purges once across a concurrent 401 storm on both clients, and unlocks for a new generation', async () => {
     await Promise.allSettled(Array.from({ length: 10 }, (_, i) => clients[i % 2].get('/private', { adapter: failure(401) })))
     expect(purgeSession).toHaveBeenCalledExactlyOnceWith('unauthorized', 1)

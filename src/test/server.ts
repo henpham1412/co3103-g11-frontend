@@ -5,11 +5,15 @@ import { wireCurrentUser, wireLoginResponse, wireRegisteredUser } from './fixtur
 import { wireForgotAcknowledgment, wireResetAcknowledgment } from './fixtures/passwordRecoveryWire'
 import { wireProfileAcknowledgment } from './fixtures/profileWire'
 import { classProgress } from './fixtures/progress'
+import { validUser } from './fixtures/auth'
 
 export const identityApiUrl = (path: string) =>
   `${centralIdentityClient.defaults.baseURL?.replace(/\/$/, '')}${path}`
 
 export const handlers = [
+  // The default restored identity is a Student, not an LMS Administrator.
+  http.get(`http://localhost:8081/api/v1/admin/users/${validUser.userId}`, () =>
+    HttpResponse.json({ code: 'FORBIDDEN', message: 'Access denied', details: [] }, { status: 403 })),
   http.get('http://localhost:8081/api/v1/classes/:classId/progress', ({ params }) => HttpResponse.json(classProgress(String(params.classId)))),
   http.put('http://localhost:8081/api/v1/classes/:classId/last-visit', () => HttpResponse.json({})),
   http.patch(identityApiUrl('/users/me'), () => HttpResponse.json(wireProfileAcknowledgment)),

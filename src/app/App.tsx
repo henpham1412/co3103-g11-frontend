@@ -1,4 +1,5 @@
 import { useAuth } from '@/hooks/useAuth'
+import AdminEntry from '@/features/admin/AdminEntry'
 
 export default function App() {
   const { state } = useAuth()
@@ -32,6 +33,7 @@ export default function App() {
           <h2 id="platform-title">Platform status</h2>
           <p className="app-platform-status">Signed in</p>
           <p>You have access to your authenticated workspace. Course and tutoring features will appear here as they become available.</p>
+          <AdminEntry />
         </section>
       </div>
     </>
