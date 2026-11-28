@@ -7,6 +7,19 @@ export interface TutorOption {
   order_index: number;
 }
 
+export interface TutorQuestionOptionCreatePayload {
+  content: string;
+  is_correct: boolean;
+  order_index: number;
+}
+
+export interface TutorQuestionOptionUpdatePayload {
+  option_id?: string;
+  content: string;
+  is_correct: boolean;
+  order_index: number;
+}
+
 export interface TutorQuestion {
   question_id: string;
   question_type: QuizQuestionType;
@@ -17,12 +30,32 @@ export interface TutorQuestion {
   options: TutorOption[];
 }
 
+export interface TutorQuestionCreatePayload {
+  question_type: QuizQuestionType;
+  content: string;
+  points_awarded: number;
+  points_deducted: number;
+  order_index: number;
+  options: TutorQuestionOptionCreatePayload[];
+  skill_topic_ids?: string[];
+}
+
+export interface TutorQuestionUpdatePayload {
+  question_type?: QuizQuestionType;
+  content?: string;
+  points_awarded?: number;
+  points_deducted?: number;
+  order_index?: number;
+  options?: TutorQuestionOptionUpdatePayload[];
+  skill_topic_ids?: string[];
+}
+
 export interface TutorQuizDetails {
   quiz_id: string;
   activity_id: string;
-  title?: string;
-  description?: string | null;
-  status?: "PUBLISHED" | "HIDDEN";
+  title: string;
+  description: string | null;
+  status: "PUBLISHED" | "HIDDEN";
   time_limit_minutes: number;
   attempts_allowed: number;
   grading_method: "HIGHEST" | "AVERAGE" | "LAST";
@@ -30,7 +63,7 @@ export interface TutorQuizDetails {
   deadline: string;
   required_score: number | null;
   questions: TutorQuestion[];
-  sequence_order?: number;
+  sequence_order: number;
   attempts_exist?: boolean;
 }
 
