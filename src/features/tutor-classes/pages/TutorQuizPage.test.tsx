@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "antd";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TutorQuizDetails } from "../quiz-types";
 
@@ -162,5 +162,81 @@ describe("TutorQuizPage", () => {
     await waitFor(() => {
       expect(api.updateTutorQuizActivity).toHaveBeenCalledWith("act-1", { status: "HIDDEN" });
     });
+  });
+
+  it("clears previous quiz editor, form, and open question modal when navigating to another quiz that fails to load", async () => {
+    const { ApiError } = await import("@/api/apiError");
+    api.getTutorQuiz.mockImplementation((id: string) => {
+      if (id === "act-a") {
+        return Promise.resolve(
+          sampleQuiz({
+            quiz_id: "quiz-a",
+            activity_id: "act-a",
+            title: "Quiz A Title",
+            questions: [
+              {
+                question_id: "q-a",
+                question_type: "MCQ_SINGLE",
+                content: "Quiz A Question?",
+                points_awarded: 10,
+                points_deducted: 0,
+                order_index: 0,
+                options: [
+                  { option_id: "opt-a1", content: "Alpha", is_correct: true, order_index: 0 },
+                  { option_id: "opt-a2", content: "Beta", is_correct: false, order_index: 1 },
+                ],
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.reject(
+        new ApiError({
+          status: 404,
+          error: "Not Found",
+          code: "QUIZ_NOT_FOUND",
+          message: "Quiz B not found.",
+          timestamp: new Date().toISOString(),
+          path: "/activities/act-b/quiz",
+        }),
+      );
+    });
+    api.getTutorAttempts.mockResolvedValue([]);
+
+    render(
+      <App>
+        <MemoryRouter initialEntries={["/tutor/classes/c-1/content/quiz/act-a"]}>
+          <Link to="/tutor/classes/c-1/content/quiz/act-b">Open Quiz B</Link>
+          <Routes>
+            <Route path="/tutor/classes/:classId/content/quiz/:activityId" element={<TutorQuizPage />} />
+          </Routes>
+        </MemoryRouter>
+      </App>,
+    );
+
+    // 1. Quiz A loads with its form, questions, and an open Edit Question modal.
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Quiz A Title")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Questions (1)" }));
+    expect(await screen.findByText("Quiz A Question?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }));
+    expect(await screen.findByText("Edit Question")).toBeInTheDocument();
+
+    // 2. Navigate to Quiz B whose load fails.
+    fireEvent.click(screen.getByRole("link", { name: "Open Quiz B" }));
+
+    // 3. Quiz B error is shown and none of Quiz A's editor, form, or modal state survives.
+    await waitFor(() => {
+      expect(screen.getByText("Quiz B not found.")).toBeInTheDocument();
+    });
+    expect(screen.queryByDisplayValue("Quiz A Title")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quiz A Question?")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /questions/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /settings/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Question" })).not.toBeInTheDocument();
+    expect(api.updateTutorQuizSettings).not.toHaveBeenCalled();
+    expect(api.updateTutorQuizActivity).not.toHaveBeenCalled();
+    expect(api.updateTutorQuestion).not.toHaveBeenCalled();
   });
 });

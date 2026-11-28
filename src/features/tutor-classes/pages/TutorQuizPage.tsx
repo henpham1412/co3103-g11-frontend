@@ -19,6 +19,17 @@ export default function TutorQuizPage() {
   const { classId = "", activityId = "" } = useParams();
   const [params] = useSearchParams();
   const lessonId = params.get("lessonId") ?? "";
+  return (
+    <TutorQuizEditor
+      key={activityId ? `edit:${activityId}` : `new:${lessonId}`}
+      classId={classId}
+      activityId={activityId}
+      lessonId={lessonId}
+    />
+  );
+}
+
+function TutorQuizEditor({ classId, activityId, lessonId }: { classId: string; activityId: string; lessonId: string }) {
   const navigate = useNavigate();
   const { message } = App.useApp();
   const [quiz, setQuiz] = useState<TutorQuizDetails>();
@@ -59,12 +70,23 @@ export default function TutorQuizPage() {
         });
       } catch (cause) {
         if (controller.signal.aborted) return;
-        setQuiz({ ...value, attempts_exist: true });
+        setQuiz(undefined);
+        setAttempts([]);
+        setQuestion(undefined);
+        setLockMessage(undefined);
+        form.resetFields();
         setLockCheckFailed(true);
         setError(`Unable to verify whether this quiz has attempts. Editing is locked until the attempt history can be loaded. ${normalizeApiError(cause).message}`);
       }
     }).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setError(normalizeApiError(cause).message);
+      if (controller.signal.aborted) return;
+      setQuiz(undefined);
+      setAttempts([]);
+      setQuestion(undefined);
+      setLockMessage(undefined);
+      setLockCheckFailed(false);
+      form.resetFields();
+      setError(normalizeApiError(cause).message);
     }).finally(() => {
       if (!controller.signal.aborted) setLoadedActivityId(activityId);
     });
@@ -266,8 +288,8 @@ export default function TutorQuizPage() {
             ...(!isNew ? [{ key: "attempts", label: "Attempts", children: <AttemptsPanel attempts={attempts} onLoad={loadAttempts} /> }] : []),
           ]} />
         )}
-        <Modal open={Boolean(question)} title={question?.question_id ? "Edit Question" : "Add Question"} footer={null} onCancel={() => setQuestion(undefined)}>
-          {question && <QuestionForm key={question.question_id || "new"} initial={question} attemptsExist={Boolean(quiz?.attempts_exist)} onFinish={saveQuestion} saving={saving} />}
+        <Modal open={Boolean(question && quiz)} title={question?.question_id ? "Edit Question" : "Add Question"} footer={null} onCancel={() => setQuestion(undefined)}>
+          {question && quiz && <QuestionForm key={question.question_id || "new"} initial={question} attemptsExist={Boolean(quiz.attempts_exist)} onFinish={saveQuestion} saving={saving} />}
         </Modal>
       </main>
     </TutorWorkspaceLayout>
